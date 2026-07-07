@@ -58,6 +58,22 @@ file works as a local double-click, a static host, and a CSP-locked embed — no
 external requests. GitHub fetching works wherever the network isn't sandboxed
 (GitHub's raw + API endpoints send permissive CORS headers).
 
+## Deploy
+
+CI/CD lives in [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml): every push to
+`main` installs, lints, tests, builds, and deploys `dist/` to **Cloudflare Pages**
+(project `readmark` → `https://readmark.pages.dev`).
+
+Requires two repository secrets (Settings → Secrets → Actions):
+
+- `CLOUDFLARE_API_TOKEN` — a token with the **Cloudflare Pages: Edit** permission
+- `CLOUDFLARE_ACCOUNT_ID` — your Cloudflare account id
+
+```bash
+gh secret set CLOUDFLARE_API_TOKEN  -R aphisak-w-mohara/readmark
+gh secret set CLOUDFLARE_ACCOUNT_ID -R aphisak-w-mohara/readmark
+```
+
 ## Reference
 
 The original single-file prototype is preserved under [`reference/`](reference/).
