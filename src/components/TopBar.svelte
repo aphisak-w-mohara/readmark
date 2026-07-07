@@ -15,8 +15,8 @@
   <div class="brand"><span class="mark">R</span><span class="name">Readmark</span></div>
   <div class="bar-center"><span id="docTitle">{title}</span></div>
   <div class="bar-tools">
-    <button class="tool" onclick={onSource} title="Load Markdown or a GitHub URL">
-      <svg viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h10" /></svg><span>Source</span>
+    <button class="tool" onclick={onSource} title="Open Markdown — paste or a GitHub URL">
+      <svg viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h10" /></svg><span>Open</span>
     </button>
     <div class="sep"></div>
     <button class="tool" class:on={outlineOpen} onclick={onToggleOutline} title="Toggle outline" aria-pressed={outlineOpen}>
