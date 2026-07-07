@@ -47,10 +47,9 @@ describe("toHtml", () => {
     expect(r.html).not.toContain("javascript:");
   });
 
-  test("html in source is escaped", () => {
+  test("recognized HTML tags pass through raw (the view layer's DOMPurify removes dangerous ones)", () => {
     const r = toHtml("a <script>evil()</script> b");
-    expect(r.html).toContain("&lt;script&gt;");
-    expect(r.html).not.toContain("<script>evil");
+    expect(r.html).toContain("<script>evil()</script>");
   });
 
   test("nested + task lists", () => {
@@ -124,5 +123,25 @@ describe("toHtml", () => {
       '<div class="mermaid"><pre class="mermaid-src">graph TD; A--&gt;B;</pre></div>',
     );
     expect(r.html).not.toContain("codeblock");
+  });
+
+  test("block-level raw HTML passes through with markdown inside", () => {
+    const r = toHtml("<details>\n<summary>More</summary>\n\n- one\n- two\n\n</details>");
+    expect(r.html).toContain("<details>");
+    expect(r.html).toContain("<summary>More</summary>");
+    expect(r.html).toContain("<ul><li>one</li><li>two</li></ul>");
+    expect(r.html).toContain("</details>");
+  });
+
+  test("inline HTML tags pass through", () => {
+    expect(toHtml("press <kbd>Esc</kbd> to exit").html).toContain("press <kbd>Esc</kbd> to exit");
+  });
+
+  test("stray < that is not a tag is escaped", () => {
+    expect(toHtml("if a < b and c < d").html).toContain("if a &lt; b and c &lt; d");
+  });
+
+  test("raw HTML passes through unsanitized (view layer sanitizes it)", () => {
+    expect(toHtml("<b>bold html</b>").html).toContain("<b>bold html</b>");
   });
 });

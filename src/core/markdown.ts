@@ -25,6 +25,7 @@ export interface MarkdownOptions {
 
 const SENT = String.fromCharCode(1); // brackets protected inline-code slots
 const SENT2 = String.fromCharCode(2); // brackets protected link/image HTML
+const SENT3 = String.fromCharCode(3); // brackets pass-through raw HTML tags
 
 /** Apply emphasis / strong / strikethrough to already-escaped text. */
 function emph(s: string): string {
@@ -77,9 +78,16 @@ function inline(src: string): string {
     return SENT2 + (stashed.length - 1) + SENT2;
   };
 
+  const tags: string[] = [];
   let t = src.replace(/(`+)([\s\S]*?)\1/g, (_m, _tk, code: string) => {
     codes.push(code.replace(/^ | $/g, ""));
     return SENT + (codes.length - 1) + SENT;
+  });
+  // Park valid-looking HTML tags (and comments) so raw HTML passes through; a
+  // stray "<" is still escaped below. The view layer sanitizes the result.
+  t = t.replace(/<\/?[a-zA-Z][a-zA-Z0-9-]*(?:\s[^<>]*)?\/?>|<!--[\s\S]*?-->/g, (m) => {
+    tags.push(m);
+    return SENT3 + (tags.length - 1) + SENT3;
   });
   t = escapeHtml(t);
   // angle autolinks: <https://example.com>
@@ -116,8 +124,9 @@ function inline(src: string): string {
   t = emph(t);
   // hard break
   t = t.replace(/ {2,}\n/g, "<br>\n");
-  // restore parked link/image HTML, then inline code
+  // restore parked link/image HTML, raw HTML tags, then inline code
   t = t.replace(new RegExp(SENT2 + "(\\d+)" + SENT2, "g"), (_m, i: string) => stashed[+i]);
+  t = t.replace(new RegExp(SENT3 + "(\\d+)" + SENT3, "g"), (_m, i: string) => tags[+i]);
   t = t.replace(
     new RegExp(SENT + "(\\d+)" + SENT, "g"),
     (_m, i: string) => `<code>${escapeHtml(codes[+i])}</code>`,
@@ -348,13 +357,26 @@ function parseBlocks(src: string, ctx: Ctx): string {
       out.push(renderList(buf));
       continue;
     }
+    // raw HTML block (e.g. <details>/<summary>): pass through verbatim until a
+    // blank line, so markdown between the tags still renders. Sanitized by the
+    // view layer. Autolink-only lines (<https://…>) fall through to a paragraph.
+    if (/^\s*<(\/?[a-zA-Z][\w-]*|!--)/.test(line) && !/^\s*<https?:/i.test(line)) {
+      const buf: string[] = [];
+      while (i < lines.length && !isBlank(lines[i])) {
+        buf.push(lines[i]);
+        i++;
+      }
+      out.push(buf.join("\n"));
+      continue;
+    }
     // paragraph
     const buf: string[] = [];
     while (
       i < lines.length &&
       !isBlank(lines[i]) &&
       !/^\s*(#{1,6}\s|>|`{3,}|~{3,}|([-*_])\s*\2\s*\2)/.test(lines[i]) &&
-      !/^(\s*)([-+*]|\d+[.)])\s+/.test(lines[i])
+      !/^(\s*)([-+*]|\d+[.)])\s+/.test(lines[i]) &&
+      !/^\s*<(\/?[a-zA-Z][\w-]*|!--)/.test(lines[i])
     ) {
       buf.push(lines[i]);
       i++;

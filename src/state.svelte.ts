@@ -5,6 +5,7 @@
  * work to the pure core (prefs validation/persistence, markdown rendering,
  * highlighting). The core never imports Svelte.
  */
+import DOMPurify from "dompurify";
 import { loadPrefs, savePrefs, type Prefs, type StorageLike } from "./core/prefs";
 import { toHtml, type Rendered } from "./core/markdown";
 import { highlight } from "./core/highlight";
@@ -26,9 +27,12 @@ class ReadmarkStore {
     this.outlineOpen = this.prefs.outline;
   }
 
-  /** Render Markdown into the reading pane. */
+  /** Render Markdown, then sanitize the HTML (the parser passes raw HTML from
+   *  untrusted sources through untouched — this is where it's made safe). */
   load(markdown: string) {
-    this.doc = toHtml(markdown, { highlight });
+    const rendered = toHtml(markdown, { highlight });
+    const html = DOMPurify.sanitize(rendered.html, { ADD_ATTR: ["target", "loading"] });
+    this.doc = { ...rendered, html };
   }
 
   /** Update reading preferences and persist. */

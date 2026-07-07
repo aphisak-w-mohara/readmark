@@ -5,6 +5,7 @@
     "": {
       "name": "codex",
       "dependencies": {
+        "dompurify": "^3.4.11",
         "mermaid": "^11.16.0",
       },
       "devDependencies": {
