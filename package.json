@@ -1,0 +1,23 @@
+{
+  "name": "codex",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "An elegant, iOS-Books-style Markdown reader — paste Markdown or a GitHub URL and read it beautifully.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "bun test src/core",
+    "check": "svelte-check --tsconfig ./tsconfig.json"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^5.0.3",
+    "@types/bun": "latest",
+    "svelte": "^5.19.0",
+    "svelte-check": "^4.1.4",
+    "typescript": "^5.7.3",
+    "vite": "^6.0.11",
+    "vite-plugin-singlefile": "^2.1.0"
+  }
+}
