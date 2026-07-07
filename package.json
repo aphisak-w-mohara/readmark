@@ -1,5 +1,5 @@
 {
-  "name": "codex",
+  "name": "readmark",
   "version": "1.0.0",
   "private": true,
   "description": "An elegant, iOS-Books-style Markdown reader — paste Markdown or a GitHub URL and read it beautifully.",

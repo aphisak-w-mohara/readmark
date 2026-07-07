@@ -48,6 +48,6 @@ describe("persistence", () => {
   });
 
   test("corrupt json -> defaults", () => {
-    expect(loadPrefs(memStorage({ "codex-prefs": "{not json" }))).toEqual(DEFAULT_PREFS);
+    expect(loadPrefs(memStorage({ "readmark-prefs": "{not json" }))).toEqual(DEFAULT_PREFS);
   });
 });

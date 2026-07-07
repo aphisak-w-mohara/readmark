@@ -1,4 +1,4 @@
-# Codex
+# Readmark
 
 An elegant, iOS-Books-style Markdown reader. Paste Markdown or point it at a GitHub URL, then read it your way — swappable paper themes, real typefaces, adjustable size/spacing/width, an auto outline, focus mode, and reading progress. No server, no CDN, no tracking.
 

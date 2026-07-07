@@ -7,4 +7,4 @@ dist/
 coverage/
 
 # generated single-file artifact (from dist/)
-codex.artifact.html
+readmark.artifact.html

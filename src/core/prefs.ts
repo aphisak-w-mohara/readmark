@@ -31,7 +31,7 @@ const THEMES = new Set(["original", "quiet", "sepia", "night", "black"]);
 const FONTS = new Set(["newyork", "charter", "georgia", "palatino", "avenir", "system"]);
 const SIZE_MIN = 14;
 const SIZE_MAX = 30;
-const KEY = "codex-prefs";
+const KEY = "readmark-prefs";
 
 /** Merge an untrusted object over the defaults, validating every field. */
 export function coercePrefs(raw: unknown): Prefs {

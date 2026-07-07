@@ -12,7 +12,7 @@
 </script>
 
 <header id="bar">
-  <div class="brand"><span class="mark">A</span><span class="name">Codex</span></div>
+  <div class="brand"><span class="mark">R</span><span class="name">Readmark</span></div>
   <div class="bar-center"><span id="docTitle">{title}</span></div>
   <div class="bar-tools">
     <button class="tool" onclick={onSource} title="Load Markdown or a GitHub URL">

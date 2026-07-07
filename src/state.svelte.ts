@@ -16,9 +16,9 @@ const memory: StorageLike = (() => {
 
 const storage: StorageLike = typeof localStorage !== "undefined" ? localStorage : memory;
 
-class CodexStore {
+class ReadmarkStore {
   prefs = $state<Prefs>(loadPrefs(storage));
-  doc = $state<Rendered>({ html: "", headings: [], title: "Codex" });
+  doc = $state<Rendered>({ html: "", headings: [], title: "Readmark" });
   outlineOpen = $state(true);
   focus = $state(false);
 
@@ -47,4 +47,4 @@ class CodexStore {
   }
 }
 
-export const store = new CodexStore();
+export const store = new ReadmarkStore();

@@ -1,8 +1,8 @@
-# Codex
+# Readmark
 
 _A quiet reading room for Markdown._
 
-Paste Markdown, or point Codex at a **GitHub URL**, and read it the way a book wants to be read — your paper, your typeface, your pace.
+Paste Markdown, or point Readmark at a **GitHub URL**, and read it the way a book wants to be read — your paper, your typeface, your pace.
 
 > Bring the calm of a good reading app to technical text.
 

@@ -79,7 +79,7 @@
           <input id="ghUrl" type="text" bind:value={ghUrl} onkeydown={ghKey} placeholder="https://github.com/owner/repo  ·  or a link to any .md file" />
         </div>
         <p class="gh-hint">
-          Paste a repo, a <code>/blob/</code> file link, or a <code>raw.githubusercontent.com</code> URL. Codex resolves it and pulls the README when you point at a repo root.
+          Paste a repo, a <code>/blob/</code> file link, or a <code>raw.githubusercontent.com</code> URL. Readmark resolves it and pulls the README when you point at a repo root.
         </p>
         <div class="gh-ex">
           {#each examples as ex (ex.url)}
