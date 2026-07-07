@@ -79,48 +79,76 @@
     return () => el.removeEventListener("click", onCopy);
   });
 
-  // recount + reset scroll after each new document paints into {@html}
+  const FOCUS_SEL =
+    ":scope > p, :scope > ul, :scope > ol, :scope > blockquote, :scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6, :scope > .codeblock, :scope > .table-wrap, :scope > .mermaid";
+
+  // Cached layout measurements so the scroll handler never reads layout per
+  // event — critical on very large documents (thousands of headings/blocks).
+  let headingTops: { id: string; top: number }[] = [];
+  let focusBlocks: HTMLElement[] = [];
+  let focusCenters: number[] = [];
+
+  function measure() {
+    if (!articleEl) return;
+    headingTops = outline.map((h) => {
+      const el = document.getElementById(h.id);
+      return { id: h.id, top: el ? el.offsetTop : 0 };
+    });
+    if (store.zen) {
+      focusBlocks = [...articleEl.querySelectorAll<HTMLElement>(FOCUS_SEL)];
+      focusCenters = focusBlocks.map((b) => b.offsetTop + b.offsetHeight / 2);
+    }
+  }
+
+  // recount + reset scroll + remeasure after each new document paints into {@html}
   $effect(() => {
     // oxlint-disable-next-line no-unused-expressions -- read tracks doc changes for this effect
     store.doc.html;
     queueMicrotask(() => {
       if (articleEl) words = countWords(articleEl.textContent || "");
       if (stageEl) stageEl.scrollTop = 0;
-      onScroll();
-      if (store.zen) updateFocus();
+      measure();
+      applyScroll();
     });
   });
 
-  function headingTops() {
-    return outline.map((h) => {
-      const el = document.getElementById(h.id);
-      return { id: h.id, top: el ? el.offsetTop : 0 };
+  // remeasure when layout-affecting state changes (typography, width, rails, zen)
+  $effect(() => {
+    // oxlint-disable-next-line no-unused-expressions -- track layout-affecting state
+    [readStyle, store.outlineOpen, store.zen];
+    queueMicrotask(() => {
+      measure();
+      applyScroll();
+    });
+  });
+
+  let scrollScheduled = false;
+  function onScroll() {
+    if (scrollScheduled) return;
+    scrollScheduled = true;
+    requestAnimationFrame(() => {
+      scrollScheduled = false;
+      applyScroll();
     });
   }
 
-  function onScroll() {
+  function applyScroll() {
     if (!stageEl) return;
     const st = stageEl.scrollTop;
     const max = stageEl.scrollHeight - stageEl.clientHeight;
     progress = progressPct(st, stageEl.scrollHeight, stageEl.clientHeight);
-    const tops = headingTops();
-    let id = activeHeadingId(tops, st + 80);
-    if (max - st < 4 && tops.length) id = tops[tops.length - 1].id;
+    let id = activeHeadingId(headingTops, st + 80);
+    if (max - st < 4 && headingTops.length) id = headingTops[headingTops.length - 1].id;
     activeId = id;
-    if (store.zen) updateFocus();
+    if (store.zen) {
+      const idx = focusTargetIndex(focusCenters, st + stageEl.clientHeight / 2);
+      focusBlocks.forEach((b, i) => b.classList.toggle("focus-live", i === idx));
+    }
   }
 
-  function updateFocus() {
-    if (!articleEl || !stageEl) return;
-    const blocks = [
-      ...articleEl.querySelectorAll<HTMLElement>(
-        ":scope > p, :scope > ul, :scope > ol, :scope > blockquote, :scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6, :scope > .codeblock, :scope > .table-wrap",
-      ),
-    ];
-    const center = stageEl.scrollTop + stageEl.clientHeight / 2;
-    const centers = blocks.map((b) => b.offsetTop + b.offsetHeight / 2);
-    const idx = focusTargetIndex(centers, center);
-    blocks.forEach((b, i) => b.classList.toggle("focus-live", i === idx));
+  function onResize() {
+    measure();
+    applyScroll();
   }
 
   function jump(id: string) {
@@ -151,9 +179,8 @@
 
   function toggleZen() {
     store.toggleZen();
-    if (store.zen) {
-      queueMicrotask(updateFocus);
-    } else {
+    // entering Zen: the layout effect remeasures + lights the current block.
+    if (!store.zen) {
       peek = false;
       articleEl?.querySelectorAll(".focus-live").forEach((b) => b.classList.remove("focus-live"));
     }
@@ -178,7 +205,7 @@
   }
 </script>
 
-<svelte:window onkeydown={onKey} onmousemove={onMove} />
+<svelte:window onkeydown={onKey} onmousemove={onMove} onresize={onResize} />
 
 <div
   id="app"
