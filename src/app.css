@@ -272,6 +272,21 @@ textarea {
   background: var(--brass-soft);
   box-shadow: inset 0 0 0 1px rgba(201, 155, 69, 0.25);
 }
+/* the primary entry point — the Open button stands out in brass */
+.tool.primary {
+  color: #1a1408;
+  background: var(--brass);
+  font-weight: 600;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.15);
+}
+.tool.primary:hover {
+  color: #1a1408;
+  background: var(--brass);
+  filter: brightness(1.08);
+}
+.tool.primary svg {
+  stroke: #1a1408;
+}
 .tool .aa {
   font-family: var(--serif);
   font-size: 16px;
@@ -673,6 +688,38 @@ textarea {
 }
 .md pre code {
   font-family: inherit;
+}
+/* mermaid diagrams */
+.md .mermaid {
+  display: flex;
+  justify-content: center;
+  margin: 1.6em 0;
+}
+.md .mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+.md .mermaid-src {
+  width: 100%;
+  font-family: var(--mono);
+  font-size: 0.8em;
+  line-height: 1.6;
+  color: var(--ink-2);
+  background: var(--codebg);
+  padding: 14px 16px;
+  border-radius: 9px;
+  white-space: pre-wrap;
+  box-shadow: inset 0 0 0 1px var(--codeln);
+}
+.md .mermaid-error {
+  width: 100%;
+  font-family: var(--mono);
+  font-size: 0.8em;
+  color: #b3623f;
+  background: rgba(190, 90, 60, 0.08);
+  padding: 12px 14px;
+  border-radius: 9px;
+  white-space: pre-wrap;
 }
 .t-com {
   color: var(--t-com);

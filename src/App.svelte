@@ -31,6 +31,45 @@
   const readStyle = $derived(
     `--read-font:${fontCss(store.prefs.font)};--read-size:${store.prefs.size}px;--read-lh:${store.prefs.spacing};--measure:${store.prefs.width}`,
   );
+  const isDark = $derived(store.prefs.theme === "night" || store.prefs.theme === "black");
+
+  // Render any ```mermaid blocks into SVG. Lazy-imports mermaid so the library
+  // only loads when a document actually contains a diagram.
+  let mermaidSeq = 0;
+  async function renderMermaid(dark: boolean) {
+    if (!articleEl) return;
+    const blocks = [...articleEl.querySelectorAll<HTMLElement>(".mermaid")];
+    if (!blocks.length) return;
+    const mermaid = (await import("mermaid")).default;
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: dark ? "dark" : "neutral",
+      securityLevel: "strict",
+      fontFamily: "inherit",
+    });
+    for (const el of blocks) {
+      const code = el.dataset.src ?? el.querySelector(".mermaid-src")?.textContent ?? "";
+      el.dataset.src = code;
+      try {
+        const { svg } = await mermaid.render("mmd-" + mermaidSeq++, code);
+        el.innerHTML = svg;
+      } catch (err) {
+        el.textContent = "";
+        const pre = document.createElement("pre");
+        pre.className = "mermaid-error";
+        pre.textContent = "Mermaid error: " + (err instanceof Error ? err.message : String(err));
+        el.append(pre);
+      }
+    }
+  }
+
+  // (re)render diagrams whenever the document changes or the light/dark theme flips
+  $effect(() => {
+    // oxlint-disable-next-line no-unused-expressions -- track doc + theme for diagram rendering
+    store.doc.html;
+    const dark = isDark;
+    queueMicrotask(() => renderMermaid(dark));
+  });
 
   // delegate code-block "Copy" clicks off the article (survives {@html} swaps)
   $effect(() => {

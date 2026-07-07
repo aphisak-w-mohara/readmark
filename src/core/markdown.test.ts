@@ -93,4 +93,36 @@ describe("toHtml", () => {
     const r = toHtml("```\n<b> & 1\n```");
     expect(r.html).toContain("&lt;b&gt; &amp; 1");
   });
+
+  test("angle-bracket autolinks", () => {
+    const r = toHtml("see <https://example.com/x> now");
+    expect(r.html).toContain(
+      '<a href="https://example.com/x" target="_blank" rel="noopener">https://example.com/x</a>',
+    );
+  });
+
+  test("reference-style links (full, collapsed, shortcut)", () => {
+    const r = toHtml('[full][id] and [id][] and [id]\n\n[id]: https://ref.example "T"');
+    // definition line is consumed, not rendered
+    expect(r.html).not.toContain("https://ref.example &quot;T&quot;");
+    expect(r.html).toContain(
+      '<a href="https://ref.example" title="T" target="_blank" rel="noopener">full</a>',
+    );
+    expect(r.html).toContain(
+      '<a href="https://ref.example" title="T" target="_blank" rel="noopener">id</a>',
+    );
+  });
+
+  test("unresolved reference brackets are left as text", () => {
+    const r = toHtml("this [is not] a link");
+    expect(r.html).toContain("this [is not] a link");
+  });
+
+  test("mermaid fence becomes a diagram placeholder, not a code block", () => {
+    const r = toHtml("```mermaid\ngraph TD; A-->B;\n```");
+    expect(r.html).toContain(
+      '<div class="mermaid"><pre class="mermaid-src">graph TD; A--&gt;B;</pre></div>',
+    );
+    expect(r.html).not.toContain("codeblock");
+  });
 });

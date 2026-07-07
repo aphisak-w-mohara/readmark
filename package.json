@@ -15,6 +15,9 @@
     "fmt": "oxfmt",
     "fmt:check": "oxfmt --check"
   },
+  "dependencies": {
+    "mermaid": "^11.16.0"
+  },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.1.4",
     "@types/bun": "latest",

@@ -23,7 +23,18 @@ export interface MarkdownOptions {
   highlight?: Highlighter;
 }
 
-const SENT = String.fromCharCode(1); // sentinel that brackets protected inline-code slots
+const SENT = String.fromCharCode(1); // brackets protected inline-code slots
+const SENT2 = String.fromCharCode(2); // brackets protected link/image HTML
+
+/** Apply emphasis / strong / strikethrough to already-escaped text. */
+function emph(s: string): string {
+  return s
+    .replace(/\*\*([^\s](?:[^*]*[^\s])?)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|[^\w])__([^\s](?:[^_]*[^\s])?)__/g, "$1<strong>$2</strong>")
+    .replace(/(^|[^*])\*([^\s*](?:[^*]*[^\s*])?)\*/g, "$1<em>$2</em>")
+    .replace(/(^|[^\w_])_([^\s_](?:[^_]*[^\s_])?)_/g, "$1<em>$2</em>")
+    .replace(/~~([^~]+)~~/g, "<del>$1</del>");
+}
 
 /** Strip inline markdown to plain text (for TOC labels and the title). */
 function stripInline(s: string): string {
@@ -38,42 +49,75 @@ function stripInline(s: string): string {
     .trim();
 }
 
+// Link reference definitions collected per-document (reset in toHtml).
+let REFS: Record<string, { url: string; title?: string }> = {};
+
+function anchor(text: string, url: string, title?: string): string {
+  return `<a href="${escapeAttr(safeUrl(url))}"${title ? ` title="${escapeAttr(title)}"` : ""} target="_blank" rel="noopener">${text}</a>`;
+}
+
+/** Pull `[label]: url "title"` definitions out of the source and record them. */
+function extractRefs(src: string): string {
+  return src.replace(
+    /^[ ]{0,3}\[([^\]]+)\]:[ \t]*<?([^\s>]+)>?(?:[ \t]+["'(]([^"')]+)["')])?[ \t]*$/gm,
+    (_m, label: string, url: string, title?: string) => {
+      REFS[label.trim().toLowerCase()] = { url, title };
+      return "";
+    },
+  );
+}
+
 function inline(src: string): string {
   const codes: string[] = [];
+  const stashed: string[] = [];
+  // Park finished link/image HTML behind a sentinel so later passes (esp. the
+  // underscore-emphasis rule vs. target="_blank") can't corrupt it.
+  const stash = (h: string): string => {
+    stashed.push(h);
+    return SENT2 + (stashed.length - 1) + SENT2;
+  };
+
   let t = src.replace(/(`+)([\s\S]*?)\1/g, (_m, _tk, code: string) => {
     codes.push(code.replace(/^ | $/g, ""));
     return SENT + (codes.length - 1) + SENT;
   });
   t = escapeHtml(t);
+  // angle autolinks: <https://example.com>
+  t = t.replace(/&lt;(https?:\/\/[^\s&<>]+)&gt;/g, (_m, url: string) => stash(anchor(url, url)));
   // images
   t = t.replace(
     /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)/g,
     (_m, alt: string, url: string, ti?: string) =>
-      `<img src="${escapeAttr(safeUrl(url))}" alt="${escapeAttr(alt)}"${ti ? ` title="${escapeAttr(ti)}"` : ""} loading="lazy">`,
+      stash(
+        `<img src="${escapeAttr(safeUrl(url))}" alt="${escapeAttr(alt)}"${ti ? ` title="${escapeAttr(ti)}"` : ""} loading="lazy">`,
+      ),
   );
-  // links
+  // inline links (emphasis applied to the link text, then the whole anchor parked)
   t = t.replace(
     /\[([^\]]+)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)/g,
-    (_m, txt: string, href: string, ti?: string) =>
-      `<a href="${escapeAttr(safeUrl(href))}"${ti ? ` title="${escapeAttr(ti)}"` : ""} target="_blank" rel="noopener">${txt}</a>`,
+    (_m, txt: string, href: string, ti?: string) => stash(anchor(emph(txt), href, ti)),
   );
+  // reference links: [text][label] and collapsed [text][]
+  t = t.replace(/\[([^\]]+)\]\[([^\]]*)\]/g, (m, text: string, label: string) => {
+    const ref = REFS[(label || text).trim().toLowerCase()];
+    return ref ? stash(anchor(emph(text), ref.url, ref.title)) : m;
+  });
+  // shortcut reference links: [label]
+  t = t.replace(/\[([^\]]+)\]/g, (m, label: string) => {
+    const ref = REFS[label.trim().toLowerCase()];
+    return ref ? stash(anchor(emph(label), ref.url, ref.title)) : m;
+  });
   // bare autolinks
   t = t.replace(
     /(^|[\s(])(https?:\/\/[^\s<)]+[^\s<).,;])/g,
-    (_m, pre: string, url: string) =>
-      `${pre}<a href="${escapeAttr(url)}" target="_blank" rel="noopener">${url}</a>`,
+    (_m, pre: string, url: string) => `${pre}${stash(anchor(url, url))}`,
   );
-  // emphasis
-  t = t
-    .replace(/\*\*([^\s](?:[^*]*[^\s])?)\*\*/g, "<strong>$1</strong>")
-    .replace(/(^|[^\w])__([^\s](?:[^_]*[^\s])?)__/g, "$1<strong>$2</strong>");
-  t = t
-    .replace(/(^|[^*])\*([^\s*](?:[^*]*[^\s*])?)\*/g, "$1<em>$2</em>")
-    .replace(/(^|[^\w_])_([^\s_](?:[^_]*[^\s_])?)_/g, "$1<em>$2</em>");
-  t = t.replace(/~~([^~]+)~~/g, "<del>$1</del>");
+  // emphasis on the remaining prose (anchors are safely parked)
+  t = emph(t);
   // hard break
   t = t.replace(/ {2,}\n/g, "<br>\n");
-  // restore inline code
+  // restore parked link/image HTML, then inline code
+  t = t.replace(new RegExp(SENT2 + "(\\d+)" + SENT2, "g"), (_m, i: string) => stashed[+i]);
   t = t.replace(
     new RegExp(SENT + "(\\d+)" + SENT, "g"),
     (_m, i: string) => `<code>${escapeHtml(codes[+i])}</code>`,
@@ -208,7 +252,13 @@ function parseBlocks(src: string, ctx: Ctx): string {
         i++;
       }
       i++;
-      out.push(renderCode(buf.join("\n"), lang, ctx.hl));
+      const fenced = buf.join("\n");
+      if (lang.toLowerCase() === "mermaid") {
+        // Placeholder rendered into an SVG diagram by the view layer.
+        out.push(`<div class="mermaid"><pre class="mermaid-src">${escapeHtml(fenced)}</pre></div>`);
+      } else {
+        out.push(renderCode(fenced, lang, ctx.hl));
+      }
       continue;
     }
     // ATX heading
@@ -317,8 +367,10 @@ function parseBlocks(src: string, ctx: Ctx): string {
 /** Render Markdown to HTML plus the outline and title derived during the parse. */
 export function toHtml(src: string, opts: MarkdownOptions = {}): Rendered {
   const hl = opts.highlight ?? ((c: string) => escapeHtml(c));
+  REFS = {};
+  const cleaned = extractRefs(src);
   const headings: Heading[] = [];
-  const html = parseBlocks(src, { hl, slug: makeSlugger(), headings });
+  const html = parseBlocks(cleaned, { hl, slug: makeSlugger(), headings });
   const h1 = headings.find((x) => x.level === 1);
   const title = (h1 ? h1.text : "Untitled").trim().slice(0, 80) || "Untitled";
   return { html, headings, title };
