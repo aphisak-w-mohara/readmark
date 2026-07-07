@@ -16,7 +16,10 @@ export interface FetchResponse {
   status: number;
   text(): Promise<string>;
 }
-export type FetchLike = (url: string, init?: { headers?: Record<string, string> }) => Promise<FetchResponse>;
+export type FetchLike = (
+  url: string,
+  init?: { headers?: Record<string, string> },
+) => Promise<FetchResponse>;
 
 export interface Loaded {
   markdown: string;
@@ -39,7 +42,11 @@ export function resolveGitHub(input: string): Resolved {
 
   // already a raw URL
   if (/^(https?:\/\/)?raw\.githubusercontent\.com/i.test(u)) {
-    return { kind: "raw", url: u.startsWith("http") ? u : "https://" + u, name: u.split("/").pop() || "document" };
+    return {
+      kind: "raw",
+      url: u.startsWith("http") ? u : "https://" + u,
+      name: u.split("/").pop() || "document",
+    };
   }
   // owner/repo shorthand
   if (/^[\w.-]+\/[\w.-]+$/.test(u)) u = "https://github.com/" + u;
@@ -64,7 +71,8 @@ export function resolveGitHub(input: string): Resolved {
     };
   }
   // any other markdown-ish URL
-  if (/\.(md|markdown|txt|mdx)$/i.test(u)) return { kind: "raw", url: u, name: u.split("/").pop() || "document" };
+  if (/\.(md|markdown|txt|mdx)$/i.test(u))
+    return { kind: "raw", url: u, name: u.split("/").pop() || "document" };
   return { kind: "raw", url: u, name: u.split("/").pop() || "document" };
 }
 
@@ -84,8 +92,13 @@ export async function fetchMarkdown(input: string, fetchFn: FetchLike): Promise<
     );
   }
   if (!res.ok) {
-    if (res.status === 404) throw new SourceError("http", "Not found (404). Check the path, or try another branch.");
-    if (res.status === 403) throw new SourceError("http", "GitHub rate-limited this request (403). Try again shortly, or paste the Markdown.");
+    if (res.status === 404)
+      throw new SourceError("http", "Not found (404). Check the path, or try another branch.");
+    if (res.status === 403)
+      throw new SourceError(
+        "http",
+        "GitHub rate-limited this request (403). Try again shortly, or paste the Markdown.",
+      );
     throw new SourceError("http", "GitHub returned " + res.status + ".");
   }
   return { markdown: await res.text(), name: r.name };

@@ -60,7 +60,8 @@ function inline(src: string): string {
   // bare autolinks
   t = t.replace(
     /(^|[\s(])(https?:\/\/[^\s<)]+[^\s<).,;])/g,
-    (_m, pre: string, url: string) => `${pre}<a href="${escapeAttr(url)}" target="_blank" rel="noopener">${url}</a>`,
+    (_m, pre: string, url: string) =>
+      `${pre}<a href="${escapeAttr(url)}" target="_blank" rel="noopener">${url}</a>`,
   );
   // emphasis
   t = t
@@ -73,7 +74,10 @@ function inline(src: string): string {
   // hard break
   t = t.replace(/ {2,}\n/g, "<br>\n");
   // restore inline code
-  t = t.replace(new RegExp(SENT + "(\\d+)" + SENT, "g"), (_m, i: string) => `<code>${escapeHtml(codes[+i])}</code>`);
+  t = t.replace(
+    new RegExp(SENT + "(\\d+)" + SENT, "g"),
+    (_m, i: string) => `<code>${escapeHtml(codes[+i])}</code>`,
+  );
   return t;
 }
 
@@ -119,7 +123,11 @@ function renderList(lines: string[]): string {
       const ordered = /\d/.test(m[2]);
       const text = m[3];
       const task = text.match(/^\[([ xX])\]\s+(.*)$/);
-      push(indent, ordered, { text: task ? task[2] : text, task: task ? task[1].toLowerCase() === "x" : null, subs: [] });
+      push(indent, ordered, {
+        text: task ? task[2] : text,
+        task: task ? task[1].toLowerCase() === "x" : null,
+        subs: [],
+      });
     } else {
       const list = stack[stack.length - 1];
       if (list && list.items.length) list.items[list.items.length - 1].text += " " + raw.trim();
@@ -129,7 +137,8 @@ function renderList(lines: string[]): string {
     let h = list.ordered ? "<ol>" : "<ul>";
     for (const it of list.items) {
       const cls = it.task !== null ? ' class="task"' : "";
-      const box = it.task !== null ? `<input type="checkbox" disabled${it.task ? " checked" : ""}> ` : "";
+      const box =
+        it.task !== null ? `<input type="checkbox" disabled${it.task ? " checked" : ""}> ` : "";
       h += `<li${cls}>${box}${inline(it.text)}`;
       for (const s of it.subs) h += build(s);
       h += "</li>";
@@ -214,7 +223,12 @@ function parseBlocks(src: string, ctx: Ctx): string {
       continue;
     }
     // setext heading
-    if (i + 1 < lines.length && /^\s*(=+|-+)\s*$/.test(lines[i + 1]) && !isBlank(line) && !/^\s*[-+*]\s/.test(line)) {
+    if (
+      i + 1 < lines.length &&
+      /^\s*(=+|-+)\s*$/.test(lines[i + 1]) &&
+      !isBlank(line) &&
+      !/^\s*[-+*]\s/.test(line)
+    ) {
       const level = lines[i + 1].trim()[0] === "=" ? 1 : 2;
       const text = stripInline(line.trim());
       const id = ctx.slug(text);
@@ -232,7 +246,11 @@ function parseBlocks(src: string, ctx: Ctx): string {
     // blockquote
     if (/^\s*>/.test(line)) {
       const buf: string[] = [];
-      while (i < lines.length && !isBlank(lines[i]) && !/^\s*(#{1,6}\s|`{3,}|~{3,})/.test(lines[i])) {
+      while (
+        i < lines.length &&
+        !isBlank(lines[i]) &&
+        !/^\s*(#{1,6}\s|`{3,}|~{3,})/.test(lines[i])
+      ) {
         buf.push(lines[i].replace(/^\s*>\s?/, ""));
         i++;
       }

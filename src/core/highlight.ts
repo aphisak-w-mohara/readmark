@@ -8,8 +8,8 @@ interface Grammar {
   kw: string;
   block: boolean;
   line: string[];
-  _re?: RegExp;
-  _kw?: Set<string>;
+  regex?: RegExp;
+  keywords?: Set<string>;
 }
 
 const KW_CLIKE =
@@ -59,14 +59,39 @@ const GRAMMARS: Record<string, Grammar> = {
 };
 
 const ALIAS: Record<string, string> = {
-  javascript: "js", jsx: "js", mjs: "js", node: "js",
-  typescript: "ts", tsx: "ts",
-  python: "py", python3: "py", rb: "py", ruby: "py",
-  yml: "sh", yaml: "sh", bash: "sh", shell: "sh", zsh: "sh", console: "sh",
-  golang: "go", rs: "rust", cpp: "c", "c++": "c", h: "c",
-  kt: "java", kotlin: "java", scss: "css", less: "css",
-  xml: "html", vue: "html", svelte: "html",
-  md: "", markdown: "", text: "", txt: "", plain: "",
+  javascript: "js",
+  jsx: "js",
+  mjs: "js",
+  node: "js",
+  typescript: "ts",
+  tsx: "ts",
+  python: "py",
+  python3: "py",
+  rb: "py",
+  ruby: "py",
+  yml: "sh",
+  yaml: "sh",
+  bash: "sh",
+  shell: "sh",
+  zsh: "sh",
+  console: "sh",
+  golang: "go",
+  rs: "rust",
+  cpp: "c",
+  "c++": "c",
+  h: "c",
+  kt: "java",
+  kotlin: "java",
+  scss: "css",
+  less: "css",
+  xml: "html",
+  vue: "html",
+  svelte: "html",
+  md: "",
+  markdown: "",
+  text: "",
+  txt: "",
+  plain: "",
 };
 
 function grammarFor(lang: string): Grammar | null {
@@ -74,7 +99,7 @@ function grammarFor(lang: string): Grammar | null {
   if (lang in ALIAS) lang = ALIAS[lang];
   const g = GRAMMARS[lang];
   if (!g) return null;
-  if (!g._re) {
+  if (!g.regex) {
     const esc = (c: string) => c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const parts = [
       g.block ? "(\\/\\*[\\s\\S]*?\\*\\/|<!--[\\s\\S]*?-->)" : "(\\b\\B)",
@@ -83,8 +108,8 @@ function grammarFor(lang: string): Grammar | null {
       "(\\b\\d[\\d_]*(?:\\.[\\d_]+)?(?:[eE][+-]?\\d+)?\\b|0x[0-9a-fA-F]+)",
       "([A-Za-z_$][\\w$]*)",
     ];
-    g._re = new RegExp(parts.join("|"), "g");
-    g._kw = new Set(g.kw.split(/\s+/).filter(Boolean));
+    g.regex = new RegExp(parts.join("|"), "g");
+    g.keywords = new Set(g.kw.split(/\s+/).filter(Boolean));
   }
   return g;
 }
@@ -92,8 +117,8 @@ function grammarFor(lang: string): Grammar | null {
 /** Highlight `code` for `lang`. Unknown languages are escaped, unstyled. */
 export function highlight(code: string, lang: string): string {
   const g = grammarFor(lang);
-  if (!g || !g._re || !g._kw) return escapeHtml(code);
-  const re = g._re;
+  if (!g || !g.regex || !g.keywords) return escapeHtml(code);
+  const re = g.regex;
   re.lastIndex = 0;
   let out = "";
   let last = 0;
@@ -106,7 +131,7 @@ export function highlight(code: string, lang: string): string {
     else if (m[3] !== undefined) cls = "str";
     else if (m[4] !== undefined) cls = "num";
     else if (m[5] !== undefined) {
-      if (g._kw.has(tok)) cls = "key";
+      if (g.keywords.has(tok)) cls = "key";
       else {
         let n = re.lastIndex;
         while (code[n] === " " || code[n] === "\t") n++;

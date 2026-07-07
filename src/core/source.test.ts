@@ -8,17 +8,26 @@ describe("resolveGitHub", () => {
 
   test("owner/repo shorthand -> readme API", () => {
     const r = resolveGitHub("facebook/react");
-    expect(r).toMatchObject({ kind: "api", url: "https://api.github.com/repos/facebook/react/readme" });
+    expect(r).toMatchObject({
+      kind: "api",
+      url: "https://api.github.com/repos/facebook/react/readme",
+    });
   });
 
   test("repo URL -> readme API", () => {
     const r = resolveGitHub("https://github.com/microsoft/vscode");
-    expect(r).toMatchObject({ kind: "api", url: "https://api.github.com/repos/microsoft/vscode/readme" });
+    expect(r).toMatchObject({
+      kind: "api",
+      url: "https://api.github.com/repos/microsoft/vscode/readme",
+    });
   });
 
   test("tree URL carries the branch as ?ref", () => {
     const r = resolveGitHub("https://github.com/torvalds/linux/tree/v6.1");
-    expect(r).toMatchObject({ kind: "api", url: "https://api.github.com/repos/torvalds/linux/readme?ref=v6.1" });
+    expect(r).toMatchObject({
+      kind: "api",
+      url: "https://api.github.com/repos/torvalds/linux/readme?ref=v6.1",
+    });
   });
 
   test("blob URL -> raw URL", () => {
@@ -32,7 +41,10 @@ describe("resolveGitHub", () => {
 
   test("raw URL passes through", () => {
     const r = resolveGitHub("https://raw.githubusercontent.com/nodejs/node/main/README.md");
-    expect(r).toMatchObject({ kind: "raw", url: "https://raw.githubusercontent.com/nodejs/node/main/README.md" });
+    expect(r).toMatchObject({
+      kind: "raw",
+      url: "https://raw.githubusercontent.com/nodejs/node/main/README.md",
+    });
   });
 });
 

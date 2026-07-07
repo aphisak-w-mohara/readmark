@@ -2,7 +2,7 @@
 
 An elegant, iOS-Books-style Markdown reader. Paste Markdown or point it at a GitHub URL, then read it your way — swappable paper themes, real typefaces, adjustable size/spacing/width, an auto outline, focus mode, and reading progress. No server, no CDN, no tracking.
 
-Built with **Svelte 5** + **Vite**, tested and tooled with **Bun**. Ships as a single self-contained `index.html`.
+Built with **Svelte 5** + **Vite 8**, linted/formatted with **Oxlint + oxfmt**, tested and tooled with **Bun**. Ships as a single self-contained `index.html`.
 
 ## Quick start
 
@@ -12,11 +12,16 @@ bun run dev        # Vite dev server + HMR
 bun run build      # -> dist/index.html (everything inlined, self-contained)
 bun test           # unit tests over the pure core
 bun run check      # svelte-check type + a11y pass
+bun run lint       # oxlint  (correctness=error, suspicious=warn)
+bun run fmt        # oxfmt   (format in place; fmt:check to verify)
 ```
+
+Config: [`.oxlintrc.json`](.oxlintrc.json), [`.oxfmtrc.json`](.oxfmtrc.json). `reference/` is
+excluded from both via [`.prettierignore`](.prettierignore) so the prototype stays verbatim.
 
 ## Architecture
 
-Designed as **deep modules**: a small, pure, framework-agnostic core, wrapped by a thin Svelte view tier. The interface *is* the test surface — the core is exercised through its own interfaces with `bun test`, no browser required.
+Designed as **deep modules**: a small, pure, framework-agnostic core, wrapped by a thin Svelte view tier. The interface _is_ the test surface — the core is exercised through its own interfaces with `bun test`, no browser required.
 
 ```
 src/

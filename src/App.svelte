@@ -42,6 +42,7 @@
 
   // recount + reset scroll after each new document paints into {@html}
   $effect(() => {
+    // oxlint-disable-next-line no-unused-expressions -- read tracks doc changes for this effect
     store.doc.html;
     queueMicrotask(() => {
       if (articleEl) words = countWords(articleEl.textContent || "");
