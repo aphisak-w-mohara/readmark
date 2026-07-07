@@ -2,13 +2,13 @@
   interface Props {
     title: string;
     outlineOpen: boolean;
-    focus: boolean;
+    zen: boolean;
     onSource: () => void;
     onToggleOutline: () => void;
     onAa: () => void;
-    onToggleFocus: () => void;
+    onToggleZen: () => void;
   }
-  let { title, outlineOpen, focus, onSource, onToggleOutline, onAa, onToggleFocus }: Props = $props();
+  let { title, outlineOpen, zen, onSource, onToggleOutline, onAa, onToggleZen }: Props = $props();
 </script>
 
 <header id="bar">
@@ -23,12 +23,10 @@
       <svg viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" /></svg>
     </button>
     <button class="tool" onclick={onAa} title="Reading settings"><span class="aa">A<span class="s">a</span></span></button>
-    <button class="tool" class:on={focus} onclick={onToggleFocus} title="Focus mode" aria-pressed={focus}>
+    <button class="tool" class:on={zen} onclick={onToggleZen} title="Zen mode — declutter for pure reading" aria-pressed={zen}>
       <svg viewBox="0 0 24 24"
-        ><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3" /><circle
-          cx="12"
-          cy="12"
-          r="2.5"
+        ><path d="M12 6.6C10.3 5.3 7.2 4.8 4.6 5.5a1 1 0 0 0-.6.9v11a1 1 0 0 0 1.2 1c2.3-.6 5-.1 6.8 1.1 1.8-1.2 4.5-1.7 6.8-1.1a1 1 0 0 0 1.2-1v-11a1 1 0 0 0-.6-.9C16.8 4.8 13.7 5.3 12 6.6Z" /><path
+          d="M12 6.6v12"
         /></svg
       >
     </button>

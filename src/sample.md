@@ -10,7 +10,7 @@ Paste Markdown, or point Readmark at a **GitHub URL**, and read it the way a boo
 
 1. Press **Source** to paste Markdown or fetch a file from GitHub.
 2. Tap **Aa** to set the theme, typeface, size, spacing, and page width.
-3. Turn on **Focus** to dim everything but the line you are reading.
+3. Turn on **Zen** to declutter everything and spotlight the passage you're reading.
 
 Your reading preferences are remembered between visits.
 

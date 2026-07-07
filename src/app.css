@@ -306,13 +306,12 @@ textarea {
   flex-direction: column;
   overflow: hidden;
   transition:
-    margin-left 0.32s cubic-bezier(0.4, 0, 0.2, 1),
+    flex-basis 0.32s cubic-bezier(0.4, 0, 0.2, 1),
+    width 0.32s cubic-bezier(0.4, 0, 0.2, 1),
     opacity 0.25s;
 }
 #app.no-outline #outline {
-  margin-left: -268px;
-  opacity: 0;
-  pointer-events: none;
+  display: none;
 }
 .rail-head {
   padding: 16px 18px 10px;
@@ -699,15 +698,40 @@ textarea {
   color: var(--t-punct);
 }
 
-/* focus mode */
-#app.focus #status {
-  transform: translateY(130%);
+/* zen mode — declutter every chrome surface, spotlight the current block */
+#app.zen #bar {
+  flex-basis: 0;
+  height: 0;
+  min-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  border-bottom-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+  transition:
+    flex-basis 0.4s ease,
+    height 0.4s ease,
+    opacity 0.3s ease;
 }
-#app.focus #bar {
-  opacity: 0.12;
+#app.zen #status {
+  flex-basis: 0;
+  height: 0;
+  min-height: 0;
+  border-top-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+  transition:
+    flex-basis 0.4s ease,
+    height 0.4s ease,
+    opacity 0.3s ease;
 }
-#app.focus #bar:hover {
-  opacity: 1;
+#app.zen #outline {
+  display: none;
+}
+#app.zen .page-wrap {
+  padding-top: 12vh;
 }
 #page.focusing :is(p, li, blockquote, h1, h2, h3, h4, h5, h6, .codeblock, .table-wrap) {
   transition: opacity 0.35s ease;
@@ -719,6 +743,98 @@ textarea {
 @media (prefers-reduced-motion: reduce) {
   #page.focusing :is(p, li, blockquote, h1, h2, h3, h4, h5, h6, .codeblock, .table-wrap) {
     transition: none;
+  }
+}
+
+/* zen exit affordance + hint */
+#zenexit {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 45;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 9px;
+  background: var(--g800);
+  color: var(--mist-2);
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  box-shadow:
+    0 8px 24px -10px rgba(0, 0, 0, 0.6),
+    inset 0 0 0 1px var(--g600);
+  opacity: 0;
+  transform: translateY(-6px);
+  pointer-events: none;
+  transition:
+    opacity 0.25s ease,
+    transform 0.25s ease;
+}
+#zenexit.peek {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+#zenexit:hover {
+  color: var(--mist);
+}
+#zenexit svg {
+  width: 15px;
+  height: 15px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+#zenhint {
+  position: fixed;
+  left: 50%;
+  bottom: 26px;
+  z-index: 45;
+  padding: 7px 15px;
+  border-radius: 20px;
+  background: var(--g800);
+  color: var(--mist-2);
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  pointer-events: none;
+  box-shadow:
+    0 8px 24px -10px rgba(0, 0, 0, 0.6),
+    inset 0 0 0 1px var(--g600);
+  animation: zenhint 3.2s ease forwards;
+}
+#zenhint b {
+  color: var(--brass-hi);
+  font-weight: 600;
+}
+@keyframes zenhint {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 8px);
+  }
+  12% {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, 0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  #zenhint {
+    animation: none;
+    opacity: 0.9;
+    transform: translateX(-50%);
+  }
+  #zenexit {
+    transition: opacity 0.25s ease;
   }
 }
 

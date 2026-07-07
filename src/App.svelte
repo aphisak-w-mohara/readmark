@@ -48,7 +48,7 @@
       if (articleEl) words = countWords(articleEl.textContent || "");
       if (stageEl) stageEl.scrollTop = 0;
       onScroll();
-      if (store.focus) updateFocus();
+      if (store.zen) updateFocus();
     });
   });
 
@@ -68,7 +68,7 @@
     let id = activeHeadingId(tops, st + 80);
     if (max - st < 4 && tops.length) id = tops[tops.length - 1].id;
     activeId = id;
-    if (store.focus) updateFocus();
+    if (store.zen) updateFocus();
   }
 
   function updateFocus() {
@@ -107,10 +107,25 @@
       .catch(() => {});
   }
 
-  function toggleFocus() {
-    store.toggleFocus();
-    if (store.focus) queueMicrotask(updateFocus);
-    else articleEl?.querySelectorAll(".focus-live").forEach((b) => b.classList.remove("focus-live"));
+  let peek = $state(false);
+  let peekTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function toggleZen() {
+    store.toggleZen();
+    if (store.zen) {
+      queueMicrotask(updateFocus);
+    } else {
+      peek = false;
+      articleEl?.querySelectorAll(".focus-live").forEach((b) => b.classList.remove("focus-live"));
+    }
+  }
+
+  // In Zen there's no chrome, so reveal the exit affordance briefly on pointer movement.
+  function onMove() {
+    if (!store.zen) return;
+    peek = true;
+    clearTimeout(peekTimer);
+    peekTimer = setTimeout(() => (peek = false), 2000);
   }
 
   function closePanels() {
@@ -118,17 +133,19 @@
     sourceOpen = false;
   }
   function onKey(e: KeyboardEvent) {
-    if (e.key === "Escape") closePanels();
+    if (e.key !== "Escape") return;
+    if (aaOpen || sourceOpen) closePanels();
+    else if (store.zen) toggleZen();
   }
 </script>
 
-<svelte:window onkeydown={onKey} />
+<svelte:window onkeydown={onKey} onmousemove={onMove} />
 
 <div
   id="app"
   data-theme={store.prefs.theme}
   class:no-outline={!store.outlineOpen}
-  class:focus={store.focus}
+  class:zen={store.zen}
   style={readStyle}
 >
   <div id="progress" style="width:{progress}%"></div>
@@ -136,18 +153,18 @@
   <TopBar
     title={store.doc.title}
     outlineOpen={store.outlineOpen}
-    focus={store.focus}
+    zen={store.zen}
     onSource={() => (sourceOpen = true)}
     onToggleOutline={() => store.toggleOutline()}
     onAa={() => (aaOpen = !aaOpen)}
-    onToggleFocus={toggleFocus}
+    onToggleZen={toggleZen}
   />
 
   <div id="body">
     <Outline headings={outline} {activeId} onJump={jump} />
     <main id="stage" bind:this={stageEl} onscroll={onScroll}>
       <div class="page-wrap">
-        <article id="page" class="md" class:focusing={store.focus} bind:this={articleEl}>
+        <article id="page" class="md" class:focusing={store.zen} bind:this={articleEl}>
           {@html store.doc.html}
         </article>
       </div>
@@ -160,4 +177,11 @@
   <SourceModal open={sourceOpen} onClose={() => (sourceOpen = false)} onRender={(md) => store.load(md)} />
 
   <div id="scrim" class:show={aaOpen || sourceOpen} onclick={closePanels} role="presentation"></div>
+
+  {#if store.zen}
+    <button id="zenexit" class:peek onclick={toggleZen} title="Exit Zen (Esc)" aria-label="Exit Zen mode">
+      <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></svg>Exit Zen
+    </button>
+    <div id="zenhint">Press <b>Esc</b> to exit Zen</div>
+  {/if}
 </div>

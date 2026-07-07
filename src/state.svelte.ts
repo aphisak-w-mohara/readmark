@@ -20,7 +20,7 @@ class ReadmarkStore {
   prefs = $state<Prefs>(loadPrefs(storage));
   doc = $state<Rendered>({ html: "", headings: [], title: "Readmark" });
   outlineOpen = $state(true);
-  focus = $state(false);
+  zen = $state(false);
 
   constructor() {
     this.outlineOpen = this.prefs.outline;
@@ -42,8 +42,8 @@ class ReadmarkStore {
     this.patchPrefs({ outline: this.outlineOpen });
   }
 
-  toggleFocus() {
-    this.focus = !this.focus;
+  toggleZen() {
+    this.zen = !this.zen;
   }
 }
 
