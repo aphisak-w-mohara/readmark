@@ -33,6 +33,14 @@
   );
   const isDark = $derived(store.prefs.theme === "night" || store.prefs.theme === "black");
 
+  // Reflect the document name in the tab title so multiple open tabs are easy to tell apart.
+  $effect(() => {
+    document.title =
+      store.doc.title && store.doc.title !== "Untitled"
+        ? `${store.doc.title} · Readmark`
+        : "Readmark — a reading room for Markdown";
+  });
+
   // Render any ```mermaid blocks into SVG. Lazy-imports mermaid so the library
   // only loads when a document actually contains a diagram.
   let mermaidSeq = 0;
