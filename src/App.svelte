@@ -35,9 +35,10 @@
 
   // Reflect the document name in the tab title so multiple open tabs are easy to tell apart.
   $effect(() => {
+    const t = store.doc.title;
     document.title =
-      store.doc.title && store.doc.title !== "Untitled"
-        ? `${store.doc.title} · Readmark`
+      t && t !== "Untitled" && t !== "Readmark"
+        ? `${t} · Readmark`
         : "Readmark — a reading room for Markdown";
   });
 
