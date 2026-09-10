@@ -8,7 +8,7 @@
 
 Reviewing a markdown file in a GitHub PR is noisy out of proportion to the change. GitHub diffs the raw source line by line, so a paragraph that was rewrapped shows as every line removed and every line added, even when three words actually changed. The reviewer's job — judge the prose — is buried under a patch.
 
-Readmark already renders markdown beautifully from a GitHub URL. It should be able to render the *change* just as well.
+Readmark already renders markdown beautifully from a GitHub URL. It should be able to render the _change_ just as well.
 
 ## Goal
 
@@ -23,24 +23,24 @@ Paste a PR URL into Readmark's existing Open modal and read the change as prose:
 
 ## Decisions
 
-| Decision | Choice | Why |
-| --- | --- | --- |
-| Entry point | Paste a PR URL into the existing Open modal | No new entry UI; `resolveGitHub` already owns URL interpretation |
-| Diff display | Layout (unified \| split) × scope (whole doc \| changes only) | Two orthogonal toggles cover the three views asked for, in less code than three view components |
-| Multi-file PRs | File picker, one document at a time | The whole reader is built around one document in one column |
-| Repo access | GitHub App, user-access token | Fine-grained `Contents: read` + `Pull requests: read`; Phase 2 becomes a permission bump, not an escalation to blanket `repo` |
-| Token storage | httpOnly cookie, proxied API | The app renders untrusted markdown; a JS-readable token is one sanitizer bypass from exfiltration |
-| Fallback auth | Pasted token, `sessionStorage` by default | The App needs the deployed origin; a token is the only way PR mode works in the offline single-file build or a self-hosted copy. Note it does **not** bypass org approval for org-owned private repos — see Auth |
-| Diff engine | Source block-align → word-diff → sentinel re-render | Reuses the existing parser; stays pure, so it tests with `bun test` like the rest of `core/` |
-| Write-back | None in Phase 1 | Read-only scope, no confirm-before-post UX, nothing a bug can break |
+| Decision       | Choice                                                        | Why                                                                                                                                                                                                              |
+| -------------- | ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Entry point    | Paste a PR URL into the existing Open modal                   | No new entry UI; `resolveGitHub` already owns URL interpretation                                                                                                                                                 |
+| Diff display   | Layout (unified \| split) × scope (whole doc \| changes only) | Two orthogonal toggles cover the three views asked for, in less code than three view components                                                                                                                  |
+| Multi-file PRs | File picker, one document at a time                           | The whole reader is built around one document in one column                                                                                                                                                      |
+| Repo access    | GitHub App, user-access token                                 | Fine-grained `Contents: read` + `Pull requests: read`; Phase 2 becomes a permission bump, not an escalation to blanket `repo`                                                                                    |
+| Token storage  | httpOnly cookie, proxied API                                  | The app renders untrusted markdown; a JS-readable token is one sanitizer bypass from exfiltration                                                                                                                |
+| Fallback auth  | Pasted token, `sessionStorage` by default                     | The App needs the deployed origin; a token is the only way PR mode works in the offline single-file build or a self-hosted copy. Note it does **not** bypass org approval for org-owned private repos — see Auth |
+| Diff engine    | Source block-align → word-diff → sentinel re-render           | Reuses the existing parser; stays pure, so it tests with `bun test` like the rest of `core/`                                                                                                                     |
+| Write-back     | None in Phase 1                                               | Read-only scope, no confirm-before-post UX, nothing a bug can break                                                                                                                                              |
 
 ### Rejected alternatives
 
 - **Browser extension on GitHub.** Best placement in the review flow, but a second deliverable: manifest, build target, store distribution, permissions.
 - **Rendered-DOM diff.** No sentinel handling needed, but requires a DOM, so it cannot live in `core/`, cannot be tested with `bun test`, and breaks the pure-core / thin-view split.
-- **Rendering GitHub's unified patch.** Trivial to build, but line-based and reflow-blind — it *is* the noise problem.
+- **Rendering GitHub's unified patch.** Trivial to build, but line-based and reflow-blind — it _is_ the noise problem.
 - **OAuth App instead of GitHub App.** No per-repo install step, but no read-only private scope exists: reading a private repo needs blanket `repo`, granting full write across every repo the user can touch.
-- **PAT as the only auth method.** Simpler — no Pages Function, no OAuth registration. Rejected as the *primary* path because a JS-readable token is exfiltratable through any sanitizer bypass, and this app renders markdown written by other people. Kept as an explicit fallback (see Auth), because the App cannot cover the offline build or a self-hosted origin.
+- **PAT as the only auth method.** Simpler — no Pages Function, no OAuth registration. Rejected as the _primary_ path because a JS-readable token is exfiltratable through any sanitizer bypass, and this app renders markdown written by other people. Kept as an explicit fallback (see Auth), because the App cannot cover the offline build or a self-hosted origin.
 - **PAT held in a Web Worker.** Would stop an XSS from stealing the token itself (it could still ask the worker to make requests). Real improvement, but a worker plus a message protocol for a fallback path — see Known ceilings.
 
 ## Architecture
@@ -79,9 +79,9 @@ type BlockKind = "heading" | "para" | "list" | "code" | "quote" | "table" | "htm
 
 interface Block {
   kind: BlockKind;
-  src: string;    // verbatim markdown source of the block
-  text: string;   // inline markup stripped, whitespace collapsed — the align key
-  line: number;   // 1-based source line where the block starts
+  src: string; // verbatim markdown source of the block
+  text: string; // inline markup stripped, whitespace collapsed — the align key
+  line: number; // 1-based source line where the block starts
 }
 
 type Change =
@@ -171,11 +171,11 @@ Method A cannot cover two situations: the offline single-file build has no Pages
 
 **It does not bypass org approval.** A fine-grained PAT against an organization-owned private repo requires that org to have enabled fine-grained tokens, and where the org requires approval, an owner approves each token request — the same wall as installing the App, in a different queue. The matrix:
 
-| Token | Org-owned private repo | Approved by |
-| --- | --- | --- |
-| Fine-grained PAT | Only if the org enables fine-grained tokens; usually per-token approval | Org owner |
-| Classic PAT | Works unless the org restricts classic tokens; under SAML SSO the user self-authorizes | The user |
-| GitHub App (Method A) | Requires installation on the org | Org owner |
+| Token                 | Org-owned private repo                                                                 | Approved by |
+| --------------------- | -------------------------------------------------------------------------------------- | ----------- |
+| Fine-grained PAT      | Only if the org enables fine-grained tokens; usually per-token approval                | Org owner   |
+| Classic PAT           | Works unless the org restricts classic tokens; under SAML SSO the user self-authorizes | The user    |
+| GitHub App (Method A) | Requires installation on the org                                                       | Org owner   |
 
 So the only admin-free route to an org's private repos is a classic PAT carrying blanket `repo` — write access across everything the user can touch. That is the least safe of the three and the one needing nobody's permission. The UI must not quietly steer people there.
 
@@ -183,11 +183,11 @@ So the only admin-free route to an org's private repos is a classic PAT carrying
 
 **Recorded unknown.** Whether HelloMOHARA and MO-BKK permit fine-grained PATs, and whether they require per-token approval, is not readable from a member account. Confirm before planning assumes any particular path works; the token entry UI must degrade honestly when the answer turns out to be no.
 
-**Where it goes.** `sessionStorage` by default — gone when the tab closes. An explicit *remember on this device* checkbox moves it to `localStorage`, with the trade-off stated in the UI next to the checkbox, not buried in docs. Stored under its own key, never inside the prefs blob: prefs are rewritten on every preference change and are the kind of thing that ends up in an export or a log.
+**Where it goes.** `sessionStorage` by default — gone when the tab closes. An explicit _remember on this device_ checkbox moves it to `localStorage`, with the trade-off stated in the UI next to the checkbox, not buried in docs. Stored under its own key, never inside the prefs blob: prefs are rewritten on every preference change and are the kind of thing that ends up in an export or a log.
 
 **Where it travels.** Only as an `Authorization: Bearer` header to `https://api.github.com`. Never in a URL or query string, never to the Pages Function, never anywhere else. When a PAT is in use the app talks to GitHub directly and the proxy is bypassed entirely, so the Cloudflare side never sees the token.
 
-**Lifecycle.** Cleared on any 401, on *forget token*, and on sign-in via Method A. `validateToken` checks the shape (`ghp_` / `github_pat_` / `gho_` prefix, length) before the first request, so a mistyped paste fails immediately with a clear message instead of a confusing 401.
+**Lifecycle.** Cleared on any 401, on _forget token_, and on sign-in via Method A. `validateToken` checks the shape (`ghp_` / `github_pat_` / `gho_` prefix, length) before the first request, so a mistyped paste fails immediately with a clear message instead of a confusing 401.
 
 **Precedence.** A live Method A session always wins. The PAT is consulted only when there is no session cookie. The app probes `GET /api/gh/user` once on load: a response means the Functions exist and Method A is offered; a network or 404 failure means this is a static build, and the UI offers only Method B.
 
@@ -209,7 +209,7 @@ That is the whole integration. No branching inside the PR logic, and tests fake 
 
 ### With neither method
 
-No session and no token means no PR mode: pasting a PR URL shows the sign-in / paste-token choice instead of an error. Public repos are *not* read unauthenticated — 60 requests an hour cannot survive a PR with a few files, and a half-working anonymous path is worse than a clear prompt.
+No session and no token means no PR mode: pasting a PR URL shows the sign-in / paste-token choice instead of an error. Public repos are _not_ read unauthenticated — 60 requests an hour cannot survive a PR with a few files, and a half-working anonymous path is worse than a clear prompt.
 
 Pasted markdown and raw-URL reading are untouched either way. The self-contained `dist/index.html` still works from a double-click for everything, and with a PAT it now covers PR mode too.
 
@@ -217,7 +217,7 @@ Pasted markdown and raw-URL reading are untouched either way. The self-contained
 
 **Entry.** `resolveGitHub` gains a `"pr"` kind. Pasting `https://github.com/owner/repo/pull/123` into the existing Open modal works; today it falls through to a raw-branch fetch and 404s. Also accept `/pull/123/files` and `/pull/123/commits/:sha`.
 
-**Auth panel.** Shown inside the Open modal when a PR URL is pasted with no credentials. On a deployed origin: a *Sign in with GitHub* button first, and below it a collapsed *use a token instead* disclosure. On a static build, where the probe found no Functions, only the token path is shown, with one line saying why. The token field is `type="password"`, `autocomplete="off"`, paired with the *remember on this device* checkbox and a one-line statement of what that means. A link to GitHub's fine-grained-token page pre-fills nothing — it just gets you there. Once a token is stored, the panel collapses to its last 4 characters plus a *forget token* button.
+**Auth panel.** Shown inside the Open modal when a PR URL is pasted with no credentials. On a deployed origin: a _Sign in with GitHub_ button first, and below it a collapsed _use a token instead_ disclosure. On a static build, where the probe found no Functions, only the token path is shown, with one line saying why. The token field is `type="password"`, `autocomplete="off"`, paired with the _remember on this device_ checkbox and a one-line statement of what that means. A link to GitHub's fine-grained-token page pre-fills nothing — it just gets you there. Once a token is stored, the panel collapses to its last 4 characters plus a _forget token_ button.
 
 **PrBar** replaces TopBar's document title in diff mode:
 
@@ -231,9 +231,9 @@ The change navigation is the core ergonomic win: on a long README with three cha
 
 **Rendering.**
 
-- *Unified* — one reading column. Deletions struck through on a muted red wash, insertions on a green wash.
-- *Split* — CSS grid, before | after, matched blocks on the same row. One scroller over aligned rows, so scroll sync needs no JS. Cost: a long block on one side pads the other.
-- *Changes only* — `same` blocks collapse to a `⋯ n unchanged paragraphs` spacer that expands on click. The heading above each change stays visible, so no change is read without its section.
+- _Unified_ — one reading column. Deletions struck through on a muted red wash, insertions on a green wash.
+- _Split_ — CSS grid, before | after, matched blocks on the same row. One scroller over aligned rows, so scroll sync needs no JS. Cost: a long block on one side pads the other.
+- _Changes only_ — `same` blocks collapse to a `⋯ n unchanged paragraphs` spacer that expands on click. The heading above each change stays visible, so no change is read without its section.
 
 **Theming.** Insert and delete colours are two custom properties per theme in `app.css`, defined for all five papers. The washes tuned for `original` do not work on `sepia` or `black`.
 
@@ -245,20 +245,20 @@ Body stays serif, chrome stays sans — the split the reader already uses.
 
 Typed like the existing `SourceError`, rendered in the Open modal.
 
-| Case | Behaviour |
-| --- | --- |
-| Not signed in / refresh failed | Sign in with GitHub, or paste a token |
-| Token fails shape check | Reject before any request: "That doesn't look like a GitHub token" |
-| Token rejected (401) | Clear it, say it was rejected or has expired, offer re-entry |
+| Case                                 | Behaviour                                                                                                                                                         |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Not signed in / refresh failed       | Sign in with GitHub, or paste a token                                                                                                                             |
+| Token fails shape check              | Reject before any request: "That doesn't look like a GitHub token"                                                                                                |
+| Token rejected (401)                 | Clear it, say it was rejected or has expired, offer re-entry                                                                                                      |
 | Token lacks access to the repo (404) | GitHub returns 404 rather than 403 for private repos a token cannot see — say the token may not cover this repository, rather than claiming the PR does not exist |
-| App not installed on the repo | Message naming the repo, plus an install link |
-| PR has no markdown changes | Say so, link to the PR on GitHub |
-| Blob over 1 MB | Skip that file with a note in the picker |
-| Deleted file | Render before-only, whole document marked removed |
-| Renamed file | Align across the rename using `previous_filename` |
-| Over 100 changed files | Paginate the files endpoint |
-| Rate limited | Show the reset time |
-| Network failure | Existing `SourceError("net")` path |
+| App not installed on the repo        | Message naming the repo, plus an install link                                                                                                                     |
+| PR has no markdown changes           | Say so, link to the PR on GitHub                                                                                                                                  |
+| Blob over 1 MB                       | Skip that file with a note in the picker                                                                                                                          |
+| Deleted file                         | Render before-only, whole document marked removed                                                                                                                 |
+| Renamed file                         | Align across the rename using `previous_filename`                                                                                                                 |
+| Over 100 changed files               | Paginate the files endpoint                                                                                                                                       |
+| Rate limited                         | Show the reset time                                                                                                                                               |
+| Network failure                      | Existing `SourceError("net")` path                                                                                                                                |
 
 ## Testing
 
