@@ -15,6 +15,8 @@ import {
   currentLogin,
   fetchPr,
   fetchSides,
+  postComment,
+  submitReview,
   lastReviewedCommit,
   listCommits,
   listMarkdownFiles,
@@ -28,6 +30,14 @@ import {
   type PrInfo,
 } from "./core/pr";
 import { clearToken, loadToken, saveToken, type TokenStore, type TokenStores } from "./core/token";
+import { parsePatch } from "./core/patch";
+import {
+  putComment,
+  removeComment,
+  type Anchor,
+  type DraftComment,
+  type ReviewEvent,
+} from "./core/review";
 import { makeGhFetch, probeSession, SIGN_IN_ENABLED, type Auth } from "./lib/gh";
 
 const memory: StorageLike = (() => {
@@ -73,6 +83,13 @@ class ReadmarkStore {
   range = $state<CommitRange | null>(null);
   /** The commit this user last reviewed at, if they have. */
   lastReviewSha = $state<string | null>(null);
+
+  // A review in progress. It belongs to the pull request, not the file:
+  // switching files or commit ranges mid-review is ordinary.
+  draft = $state<DraftComment[]>([]);
+  submitting = $state(false);
+  reviewError = $state<string | null>(null);
+  submitted = $state<string | null>(null);
   layout = $state<Layout>("unified");
   scope = $state<Scope>("all");
   busy = $state(false);
@@ -138,6 +155,13 @@ class ReadmarkStore {
     this.commits = [];
     this.range = null;
     this.lastReviewSha = null;
+    this.clearReview();
+  }
+
+  private clearReview() {
+    this.draft = [];
+    this.reviewError = null;
+    this.submitted = null;
   }
 
   /**
@@ -248,7 +272,11 @@ class ReadmarkStore {
         file,
         makeGhFetch(auth),
       );
-      const diff = toDiffHtml(before, after, { highlight });
+      // The patch decides which blocks can carry a comment at all.
+      const diff = toDiffHtml(before, after, {
+        highlight,
+        commentable: parsePatch(file.patch),
+      });
       this.diff = {
         ...diff,
         rows: diff.rows.map((r) => ({
@@ -267,6 +295,65 @@ class ReadmarkStore {
       };
     } finally {
       this.busy = false;
+    }
+  }
+
+  /** The commit a comment written now should attach to. */
+  private get headSha(): string | null {
+    const s = this.shas;
+    return s ? s.head : null;
+  }
+
+  /** Write, edit, or (with an empty body) drop a comment on one anchor. */
+  setComment(anchor: Anchor, body: string) {
+    const path = this.activeFile?.filename;
+    if (!path) return;
+    this.draft = putComment(this.draft, path, anchor, body);
+    this.reviewError = null;
+  }
+
+  dropComment(anchor: Anchor) {
+    const path = this.activeFile?.filename;
+    if (!path) return;
+    this.draft = removeComment(this.draft, path, anchor);
+  }
+
+  /** Send the whole review. Keeps the draft if GitHub refuses it. */
+  async submitReview(event: ReviewEvent, summary: string) {
+    const pr = this.pr;
+    const auth = this.auth;
+    const commit = this.headSha;
+    if (!pr || !auth || !commit) return;
+    this.submitting = true;
+    this.reviewError = null;
+    try {
+      const out = await submitReview(pr, commit, event, summary, this.draft, makeGhFetch(auth));
+      this.draft = [];
+      this.submitted = out.html_url;
+    } catch (e) {
+      this.reviewError = e instanceof Error ? e.message : String(e);
+    } finally {
+      this.submitting = false;
+    }
+  }
+
+  /** Send one comment on its own, without opening a review. */
+  async postOne(anchor: Anchor, body: string) {
+    const pr = this.pr;
+    const auth = this.auth;
+    const commit = this.headSha;
+    const path = this.activeFile?.filename;
+    if (!pr || !auth || !commit || !path) return;
+    this.submitting = true;
+    this.reviewError = null;
+    try {
+      await postComment(pr, commit, path, anchor, body, makeGhFetch(auth));
+    } catch (e) {
+      // The comment is not sent, so keep it as a draft rather than lose it.
+      this.setComment(anchor, body);
+      this.reviewError = e instanceof Error ? e.message : String(e);
+    } finally {
+      this.submitting = false;
     }
   }
 

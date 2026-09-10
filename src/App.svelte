@@ -12,6 +12,7 @@
   import PrBar from "./components/PrBar.svelte";
   import DiffView from "./components/DiffView.svelte";
   import CommitPicker from "./components/CommitPicker.svelte";
+  import ReviewBar from "./components/ReviewBar.svelte";
   import type { PrFile } from "./core/pr";
   import type { Scope } from "./state.svelte";
 
@@ -33,6 +34,7 @@
 
   // Does this origin have a sign-in backend? A static build does not.
   store.checkSession();
+
 
 
 
@@ -351,7 +353,16 @@
           bind:this={articleEl}
         >
           {#if store.mode === "diff" && store.diff}
-            <DiffView diff={store.diff} layout={store.layout} scope={store.scope} />
+            <DiffView
+              diff={store.diff}
+              layout={store.layout}
+              scope={store.scope}
+              path={store.activeFile?.filename ?? null}
+              draft={store.draft}
+              busy={store.submitting}
+              onSave={(a, b) => store.setComment(a, b)}
+              onPostNow={(a, b) => store.postOne(a, b)}
+            />
           {:else}
             {@html store.doc.html}
           {/if}
@@ -359,6 +370,20 @@
       </div>
     </main>
   </div>
+
+  {#if store.mode === "diff" && (store.draft.length || store.submitted || store.reviewError)}
+    <ReviewBar
+      count={store.draft.length}
+      busy={store.submitting}
+      error={store.reviewError}
+      submitted={store.submitted}
+      onSubmit={(e, summary) => store.submitReview(e, summary)}
+      onDismiss={() => {
+        store.reviewError = null;
+        store.submitted = null;
+      }}
+    />
+  {/if}
 
   <StatusBar title={store.doc.title} {words} {minutes} pct={Math.round(progress)} />
 
