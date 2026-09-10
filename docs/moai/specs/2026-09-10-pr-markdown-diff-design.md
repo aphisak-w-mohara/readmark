@@ -30,7 +30,7 @@ Paste a PR URL into Readmark's existing Open modal and read the change as prose:
 | Multi-file PRs | File picker, one document at a time | The whole reader is built around one document in one column |
 | Repo access | GitHub App, user-access token | Fine-grained `Contents: read` + `Pull requests: read`; Phase 2 becomes a permission bump, not an escalation to blanket `repo` |
 | Token storage | httpOnly cookie, proxied API | The app renders untrusted markdown; a JS-readable token is one sanitizer bypass from exfiltration |
-| Fallback auth | Fine-grained PAT, pasted, `sessionStorage` by default | The App needs an org owner's approval and the deployed origin; a PAT works immediately, and is the only way PR mode works in the offline single-file build |
+| Fallback auth | Pasted token, `sessionStorage` by default | The App needs the deployed origin; a token is the only way PR mode works in the offline single-file build or a self-hosted copy. Note it does **not** bypass org approval for org-owned private repos — see Auth |
 | Diff engine | Source block-align → word-diff → sentinel re-render | Reuses the existing parser; stays pure, so it tests with `bun test` like the rest of `core/` |
 | Write-back | None in Phase 1 | Read-only scope, no confirm-before-post UX, nothing a bug can break |
 
@@ -40,7 +40,7 @@ Paste a PR URL into Readmark's existing Open modal and read the change as prose:
 - **Rendered-DOM diff.** No sentinel handling needed, but requires a DOM, so it cannot live in `core/`, cannot be tested with `bun test`, and breaks the pure-core / thin-view split.
 - **Rendering GitHub's unified patch.** Trivial to build, but line-based and reflow-blind — it *is* the noise problem.
 - **OAuth App instead of GitHub App.** No per-repo install step, but no read-only private scope exists: reading a private repo needs blanket `repo`, granting full write across every repo the user can touch.
-- **PAT as the only auth method.** Simpler — no Pages Function, no OAuth registration. Rejected as the *primary* path because a JS-readable token is exfiltratable through any sanitizer bypass, and this app renders markdown written by other people. Kept as an explicit fallback (see Auth), because the App cannot cover the offline build or an un-approved org.
+- **PAT as the only auth method.** Simpler — no Pages Function, no OAuth registration. Rejected as the *primary* path because a JS-readable token is exfiltratable through any sanitizer bypass, and this app renders markdown written by other people. Kept as an explicit fallback (see Auth), because the App cannot cover the offline build or a self-hosted origin.
 - **PAT held in a Web Worker.** Would stop an XSS from stealing the token itself (it could still ask the worker to make requests). Real improvement, but a worker plus a message protocol for a fallback path — see Known ceilings.
 
 ## Architecture
@@ -167,15 +167,27 @@ Everything else returns 403. GET-only plus SameSite=Lax means no CSRF token is n
 
 ### Method B — personal access token (fallback)
 
-Method A cannot cover three real situations: the offline single-file build has no Pages Function to proxy through; an org owner may not have approved the App install on a repo you need to read today; and a self-hosted copy of `dist/index.html` on some other origin has no OAuth callback registered. A pasted token covers all three.
+Method A cannot cover two situations: the offline single-file build has no Pages Function to proxy through, and a self-hosted copy of `dist/index.html` on some other origin has no OAuth callback registered. A pasted token covers both.
 
-**What to paste.** A fine-grained PAT scoped to the repositories you review, with `Contents: read-only` and `Pull requests: read-only`, and a short expiry. Classic tokens are accepted but warned about at the point of entry: a classic token has no read-only private scope, so it necessarily carries blanket `repo` write.
+**It does not bypass org approval.** A fine-grained PAT against an organization-owned private repo requires that org to have enabled fine-grained tokens, and where the org requires approval, an owner approves each token request — the same wall as installing the App, in a different queue. The matrix:
+
+| Token | Org-owned private repo | Approved by |
+| --- | --- | --- |
+| Fine-grained PAT | Only if the org enables fine-grained tokens; usually per-token approval | Org owner |
+| Classic PAT | Works unless the org restricts classic tokens; under SAML SSO the user self-authorizes | The user |
+| GitHub App (Method A) | Requires installation on the org | Org owner |
+
+So the only admin-free route to an org's private repos is a classic PAT carrying blanket `repo` — write access across everything the user can touch. That is the least safe of the three and the one needing nobody's permission. The UI must not quietly steer people there.
+
+**What to paste.** Preferred: a fine-grained PAT scoped to the repositories you review, `Contents: read-only` and `Pull requests: read-only`, short expiry. Accepted with a warning at the point of entry: a classic PAT, which has no read-only private scope and therefore carries blanket `repo` write. Also accepted: a `gho_` OAuth token such as the one `gh auth token` prints — same header, same broad scope, already SSO-authorized, useful for getting going before an owner approves anything.
+
+**Recorded unknown.** Whether HelloMOHARA and MO-BKK permit fine-grained PATs, and whether they require per-token approval, is not readable from a member account. Confirm before planning assumes any particular path works; the token entry UI must degrade honestly when the answer turns out to be no.
 
 **Where it goes.** `sessionStorage` by default — gone when the tab closes. An explicit *remember on this device* checkbox moves it to `localStorage`, with the trade-off stated in the UI next to the checkbox, not buried in docs. Stored under its own key, never inside the prefs blob: prefs are rewritten on every preference change and are the kind of thing that ends up in an export or a log.
 
 **Where it travels.** Only as an `Authorization: Bearer` header to `https://api.github.com`. Never in a URL or query string, never to the Pages Function, never anywhere else. When a PAT is in use the app talks to GitHub directly and the proxy is bypassed entirely, so the Cloudflare side never sees the token.
 
-**Lifecycle.** Cleared on any 401, on *forget token*, and on sign-in via Method A. `validateToken` checks the shape (`ghp_` / `github_pat_` prefix, length) before the first request, so a mistyped paste fails immediately with a clear message instead of a confusing 401.
+**Lifecycle.** Cleared on any 401, on *forget token*, and on sign-in via Method A. `validateToken` checks the shape (`ghp_` / `github_pat_` / `gho_` prefix, length) before the first request, so a mistyped paste fails immediately with a clear message instead of a confusing 401.
 
 **Precedence.** A live Method A session always wins. The PAT is consulted only when there is no session cookie. The app probes `GET /api/gh/user` once on load: a response means the Functions exist and Method A is offered; a network or 404 failure means this is a static build, and the UI offers only Method B.
 
@@ -255,7 +267,7 @@ Pure `bun test`, in the style of the existing 41 tests.
 - **blocks.ts** — fenced code containing blank lines; nested lists; tables; setext headings; raw HTML blocks; `line` is correct after each of these.
 - **align.ts** — a pure rewrap yields all `same`; a three-word edit inside a rewrapped paragraph yields exactly one `changed`; inserting a block at the top does not cascade every later block into `changed`.
 - **diff.ts** — tokenizing never splits inside `[text](url)` or inline code; sentinel characters present in the input are stripped, so a document cannot forge `<ins>`; code blocks diff by line; and the property that catches most engine bugs: **`toDiffHtml(x, x)` renders byte-identical to `toHtml(x)`**.
-- **token.ts** — shape validation accepts `ghp_` and `github_pat_`, rejects whitespace, truncation and a pasted URL; save honours the remember flag by writing to the right injected store; clear wipes both stores, not just the active one.
+- **token.ts** — shape validation accepts `ghp_`, `github_pat_` and `gho_`, rejects whitespace, truncation and a pasted URL; save honours the remember flag by writing to the right injected store; clear wipes both stores, not just the active one.
 - **lib/gh.ts** — `makeGhFetch({mode:"session"})` targets same-origin `/api/gh/*` and sets no `Authorization` header; `makeGhFetch({mode:"token"})` targets `api.github.com` and sets `Bearer`; the token never appears in the request URL. Assert this against a fake fetch that records every argument.
 - **pr.ts** — URL resolution table (`/pull/123`, `/files`, `/commits/:sha`, trailing slash, non-github.com host rejected); faked fetch for file listing, filtering, and pagination.
 
