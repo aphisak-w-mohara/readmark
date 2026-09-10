@@ -4,6 +4,11 @@ dist/
 .DS_Store
 .env
 .env.*
+
+# wrangler's local secrets for `pages dev` — never commit
+.dev.vars
+.dev.vars.*
+.wrangler/
 coverage/
 
 # generated single-file artifact (from dist/)
