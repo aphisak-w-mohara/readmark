@@ -435,6 +435,7 @@ textarea {
 }
 
 #stage {
+  container: stage / inline-size;
   flex: 1 1 auto;
   overflow-y: auto;
   background: var(--mat);
@@ -1652,8 +1653,10 @@ textarea {
   color: var(--ink-2);
   opacity: 0.5;
 }
+/* Spans whatever tracks exist: a hard 1/3 would conjure a second column
+   back into being when the narrow layout has collapsed to one. */
 .diff-fold.span {
-  grid-column: 1 / 3;
+  grid-column: 1 / -1;
 }
 
 /* A split diff needs the full stage, not a single reading measure. */
@@ -1661,11 +1664,37 @@ textarea {
   max-width: none;
 }
 
-@media (max-width: 780px) {
+/* Two columns need room the window alone doesn't measure — the outline rail
+   eats into it. Query the stage, so opening the rail can collapse the split. */
+@container stage (max-width: 700px) {
   .diff-split {
     grid-template-columns: minmax(0, 1fr);
   }
-  .diff-col-head:nth-of-type(2) {
+  .diff-col-head {
+    display: none;
+  }
+  .diff-side::before {
+    display: block;
+    margin-bottom: 3px;
+    font-family: var(--ui);
+    font-size: 10.5px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+  }
+  .diff-side.is-before::before {
+    content: "Before";
+  }
+  .diff-side.is-after::before {
+    content: "After";
+    margin-top: 4px;
+  }
+  .diff-side.is-before {
+    border-bottom: 1px dashed var(--rule);
+    padding-bottom: 8px;
+  }
+  /* Stacked, an empty side is just a labelled dash taking up a screen. */
+  .diff-side[data-op="absent"] {
     display: none;
   }
 }

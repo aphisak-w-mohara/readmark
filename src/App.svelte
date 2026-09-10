@@ -12,6 +12,7 @@
   import PrBar from "./components/PrBar.svelte";
   import DiffView from "./components/DiffView.svelte";
   import type { PrFile } from "./core/pr";
+  import type { Scope } from "./state.svelte";
 
   let stageEl = $state<HTMLElement>();
   let articleEl = $state<HTMLElement>();
@@ -259,6 +260,17 @@
     changeIndex = 0;
     await store.openFile(f);
   }
+
+  // Collapsing the untouched blocks moves everything; start from the top
+  // rather than leaving the reader parked wherever the old offset landed.
+  function setScope(s: Scope) {
+    if (s === store.scope) return;
+    store.scope = s;
+    changeIndex = 0;
+    queueMicrotask(() => {
+      if (stageEl) stageEl.scrollTop = 0;
+    });
+  }
 </script>
 
 <svelte:window onkeydown={onKey} onmousemove={onMove} onresize={onResize} />
@@ -295,7 +307,7 @@
       {changeCount}
       onFile={pickFile}
       onLayout={(l) => (store.layout = l)}
-      onScope={(s) => (store.scope = s)}
+      onScope={setScope}
       onStep={stepChange}
       onExit={() => store.load(SAMPLE)}
     />

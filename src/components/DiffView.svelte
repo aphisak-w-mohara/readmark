@@ -86,8 +86,8 @@
       {#if item.kind === "fold"}
         {#if opened.has(item.from)}
           {#each item.rows as row, i (i)}
-            <div class="diff-side" data-op="same">{@html row.before}</div>
-            <div class="diff-side" data-op="same">{@html row.after}</div>
+            <div class="diff-side is-before" data-op="same">{@html row.before}</div>
+            <div class="diff-side is-after" data-op="same">{@html row.after}</div>
           {/each}
         {:else}
           <button
@@ -98,11 +98,11 @@
           </button>
         {/if}
       {:else}
-        <div class="diff-side" data-op={item.row.op === "added" ? "absent" : item.row.op}>
+        <div class="diff-side is-before" data-op={item.row.op === "added" ? "absent" : item.row.op}>
           {#if item.row.op === "added"}<span class="diff-absent">—</span>{:else}{@html item.row
               .before}{/if}
         </div>
-        <div class="diff-side" data-op={item.row.op === "removed" ? "absent" : item.row.op}>
+        <div class="diff-side is-after" data-op={item.row.op === "removed" ? "absent" : item.row.op}>
           {#if item.row.op === "removed"}<span class="diff-absent">—</span>{:else}{@html item.row
               .after}{/if}
         </div>

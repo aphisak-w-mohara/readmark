@@ -94,6 +94,11 @@
     if (e.key === "Enter") go();
   }
 
+  // Clear a credentials complaint the moment credentials arrive.
+  $effect(() => {
+    if (authed && note?.kind === "err") note = null;
+  });
+
   // A pull request pasted into the plain GitHub box is a common slip; move it
   // rather than fetching a branch path that does not exist.
   $effect(() => {
