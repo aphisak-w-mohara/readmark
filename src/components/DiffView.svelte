@@ -58,9 +58,27 @@
   });
 
   const label = (n: number) => `${n} unchanged block${n === 1 ? "" : "s"}`;
+
+  // A file that exists on only one side has nothing to compare against, so
+  // it reads as the document it is, with the fact stated once at the top.
+  const banner = $derived(
+    diff.whole === "added"
+      ? `New file — all ${diff.rows.length} block${diff.rows.length === 1 ? "" : "s"} are new.`
+      : diff.whole === "removed"
+        ? `File deleted — this is the version that was removed.`
+        : null,
+  );
 </script>
 
-{#if layout === "unified"}
+{#if banner}
+  <p class="diff-banner" data-whole={diff.whole}>{banner}</p>
+{/if}
+
+{#if diff.whole}
+  {#each diff.rows as row, i (i)}
+    <div class="diff-row">{@html diff.whole === "removed" ? row.before : row.after}</div>
+  {/each}
+{:else if layout === "unified"}
   {#each items as item (item.kind === "row" ? "r" + item.index : "f" + item.from)}
     {#if item.kind === "fold"}
       {#if opened.has(item.from)}

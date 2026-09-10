@@ -153,6 +153,12 @@ export interface DiffDoc {
   rows: DiffRow[];
   headings: (Heading & { changed: boolean })[];
   counts: { added: number; removed: number; changed: number };
+  /**
+   * Set when the file exists on only one side. A highlight that covers every
+   * block says nothing, so the view drops the washes and states the fact
+   * once instead.
+   */
+  whole: "added" | "removed" | null;
 }
 
 /** Remove element ids from a copy of the document (the split view's left column). */
@@ -249,5 +255,14 @@ export function toDiffHtml(before: string, after: string, opts: MarkdownOptions 
     else if (r.op === "changed") counts.changed++;
   }
 
-  return { rows, headings, counts };
+  const whole =
+    rows.length === 0
+      ? null
+      : rows.every((r) => r.op === "added")
+        ? "added"
+        : rows.every((r) => r.op === "removed")
+          ? "removed"
+          : null;
+
+  return { rows, headings, counts, whole };
 }

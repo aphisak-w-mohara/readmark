@@ -10,6 +10,8 @@
     layout: Layout;
     scope: Scope;
     busy: boolean;
+    /** False when the file exists on only one side — nothing to put beside it. */
+    comparable: boolean;
     changeIndex: number;
     changeCount: number;
     onFile: (f: PrFile) => void;
@@ -27,6 +29,7 @@
     layout,
     scope,
     busy,
+    comparable,
     changeIndex,
     changeCount,
     onFile,
@@ -92,20 +95,22 @@
 
   <span class="pr-spacer"></span>
 
-  <div class="pr-seg" role="group" aria-label="Diff layout">
+  <div class="pr-seg" class:off={!comparable} role="group" aria-label="Diff layout">
     <button
-      class:sel={layout === "unified"}
+      class:sel={layout === "unified" && comparable}
       onclick={() => onLayout("unified")}
-      title="Unified — one column"
+      disabled={!comparable}
+      title={comparable ? "Unified — one column" : "This file exists on one side only"}
       aria-label="Unified layout"
       aria-pressed={layout === "unified"}
     >
       <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M4 12h16" /></svg>
     </button>
     <button
-      class:sel={layout === "split"}
+      class:sel={layout === "split" && comparable}
       onclick={() => onLayout("split")}
-      title="Split — before and after"
+      disabled={!comparable}
+      title={comparable ? "Split — before and after" : "This file exists on one side only"}
       aria-label="Split layout"
       aria-pressed={layout === "split"}
     >
@@ -113,20 +118,22 @@
     </button>
   </div>
 
-  <div class="pr-seg" role="group" aria-label="How much to show">
+  <div class="pr-seg" class:off={!comparable} role="group" aria-label="How much to show">
     <button
-      class:sel={scope === "all"}
+      class:sel={scope === "all" && comparable}
       onclick={() => onScope("all")}
-      title="Whole document"
+      disabled={!comparable}
+      title={comparable ? "Whole document" : "Every block is a change here"}
       aria-label="Show the whole document"
       aria-pressed={scope === "all"}
     >
       <svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z" /><path d="M9 12h6M9 16h6" /></svg>
     </button>
     <button
-      class:sel={scope === "changed"}
+      class:sel={scope === "changed" && comparable}
       onclick={() => onScope("changed")}
-      title="Changes only"
+      disabled={!comparable}
+      title={comparable ? "Changes only" : "Every block is a change here"}
       aria-label="Show changes only"
       aria-pressed={scope === "changed"}
     >

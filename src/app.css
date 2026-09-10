@@ -1552,6 +1552,12 @@ textarea {
   background: var(--g700);
   color: var(--mist);
 }
+.pr-seg.off {
+  opacity: 0.4;
+}
+.pr-seg button:disabled {
+  cursor: default;
+}
 .pr-nav {
   display: inline-flex;
   align-items: center;
@@ -1775,6 +1781,27 @@ a#docTitle:hover .pr-subject {
   color: var(--del-ink);
   text-decoration: line-through;
   text-decoration-thickness: 1px;
+}
+
+/* One statement of fact, instead of a wash over every block. */
+.diff-banner {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 0 1.4em;
+  padding: 8px 13px;
+  border-radius: 9px;
+  border-left: 3px solid var(--chg-edge);
+  background: var(--mat);
+  color: var(--ink-2);
+  font-family: var(--ui);
+  font-size: 12.5px;
+}
+.diff-banner[data-whole="added"] {
+  border-left-color: var(--ins-ink);
+}
+.diff-banner[data-whole="removed"] {
+  border-left-color: var(--del-ink);
 }
 
 /* ---- rows ---- */

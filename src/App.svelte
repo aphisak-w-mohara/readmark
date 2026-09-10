@@ -37,6 +37,7 @@
 
 
 
+
   let changeIndex = $state(0);
 
   // outline + scrollspy track headings down to level 4 (matches the CSS depth)
@@ -257,8 +258,10 @@
     else if (e.key === "k") stepChange(-1);
   }
 
+  // Nothing to step between when every block is a change: a wholly new or
+  // deleted file is read straight through.
   const changeCount = $derived(
-    store.diff ? store.diff.rows.filter((r) => r.op !== "same").length : 0,
+    store.diff && !store.diff.whole ? store.diff.rows.filter((r) => r.op !== "same").length : 0,
   );
 
   // How many commits the current range covers; 0 means the whole PR.
@@ -322,6 +325,7 @@
       layout={store.layout}
       scope={store.scope}
       busy={store.busy}
+      comparable={!store.diff?.whole}
       {changeIndex}
       {changeCount}
       commitCount={store.commits.length}

@@ -229,3 +229,28 @@ describe("split columns", () => {
     expect(row.before).not.toContain("<del");
   });
 });
+
+describe("whole-file changes", () => {
+  test("a new file is reported as wholly added", () => {
+    const d = toDiffHtml("", "# Title\n\nbody\n\n## More\n\ntail");
+    expect(d.whole).toBe("added");
+    expect(d.rows.every((r) => r.op === "added")).toBe(true);
+  });
+
+  test("a deleted file is reported as wholly removed", () => {
+    const d = toDiffHtml("# Title\n\nbody", "");
+    expect(d.whole).toBe("removed");
+  });
+
+  test("one untouched block is enough to make it an ordinary diff", () => {
+    expect(toDiffHtml("keep me", "keep me\n\nplus a new block").whole).toBeNull();
+  });
+
+  test("an edited file is not a whole-file change", () => {
+    expect(toDiffHtml("old words here", "new words here").whole).toBeNull();
+  });
+
+  test("two empty sides are not a whole-file change", () => {
+    expect(toDiffHtml("", "").whole).toBeNull();
+  });
+});
