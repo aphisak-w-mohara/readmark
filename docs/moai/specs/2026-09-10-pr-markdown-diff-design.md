@@ -30,6 +30,7 @@ Paste a PR URL into Readmark's existing Open modal and read the change as prose:
 | Multi-file PRs | File picker, one document at a time | The whole reader is built around one document in one column |
 | Repo access | GitHub App, user-access token | Fine-grained `Contents: read` + `Pull requests: read`; Phase 2 becomes a permission bump, not an escalation to blanket `repo` |
 | Token storage | httpOnly cookie, proxied API | The app renders untrusted markdown; a JS-readable token is one sanitizer bypass from exfiltration |
+| Fallback auth | Fine-grained PAT, pasted, `sessionStorage` by default | The App needs an org owner's approval and the deployed origin; a PAT works immediately, and is the only way PR mode works in the offline single-file build |
 | Diff engine | Source block-align → word-diff → sentinel re-render | Reuses the existing parser; stays pure, so it tests with `bun test` like the rest of `core/` |
 | Write-back | None in Phase 1 | Read-only scope, no confirm-before-post UX, nothing a bug can break |
 
@@ -39,7 +40,8 @@ Paste a PR URL into Readmark's existing Open modal and read the change as prose:
 - **Rendered-DOM diff.** No sentinel handling needed, but requires a DOM, so it cannot live in `core/`, cannot be tested with `bun test`, and breaks the pure-core / thin-view split.
 - **Rendering GitHub's unified patch.** Trivial to build, but line-based and reflow-blind — it *is* the noise problem.
 - **OAuth App instead of GitHub App.** No per-repo install step, but no read-only private scope exists: reading a private repo needs blanket `repo`, granting full write across every repo the user can touch.
-- **Token in `localStorage`.** Simpler, no proxy — but readable by any script on the origin.
+- **PAT as the only auth method.** Simpler — no Pages Function, no OAuth registration. Rejected as the *primary* path because a JS-readable token is exfiltratable through any sanitizer bypass, and this app renders markdown written by other people. Kept as an explicit fallback (see Auth), because the App cannot cover the offline build or an un-approved org.
+- **PAT held in a Web Worker.** Would stop an XSS from stealing the token itself (it could still ask the worker to make requests). Real improvement, but a worker plus a message protocol for a fallback path — see Known ceilings.
 
 ## Architecture
 
@@ -51,7 +53,11 @@ src/core/
 ├─ align.ts    align(before: Block[], after: Block[]) -> Change[]
 ├─ diff.ts     wordDiff(a, b) -> merged source with sentinels
 │              toDiffHtml(before, after, {highlight}) -> DiffDoc
-└─ pr.ts       resolvePR(url), listMarkdownFiles(pr, fetch), fetchSides(file, fetch)
+├─ pr.ts       resolvePR(url), listMarkdownFiles(pr, fetch), fetchSides(file, fetch)
+└─ token.ts    validateToken(s), load/save/clear against an injected StorageLike
+
+src/lib/
+└─ gh.ts       makeGhFetch(auth) -> FetchLike   picks proxy vs direct api.github.com
 
 functions/api/
 ├─ auth/login.ts      302 to GitHub authorize; random state in an httpOnly cookie
@@ -109,6 +115,8 @@ PR url
   → DiffView
 ```
 
+The `/api/gh/*` paths above are Method A. Under Method B the same requests go straight to `api.github.com` with a Bearer header — same call sites, different `FetchLike` (see Auth).
+
 Layout and scope are view-only filters over one `DiffDoc`. Flipping a toggle never re-diffs.
 
 ## Diff engine
@@ -131,6 +139,10 @@ Everything in steps 1–4 is string in, string out. No DOM, no Svelte, no IO.
 
 ## Auth
 
+Two methods. The GitHub App is the default and the safer one; a pasted personal access token is the fallback for the cases the App cannot reach.
+
+### Method A — GitHub App (default)
+
 GitHub App with `Contents: read` and `Pull requests: read`. User-access token via the web flow.
 
 `functions/` deploys with the existing Cloudflare Pages project — same repo, same CI, no new infrastructure. `GH_CLIENT_ID` and `GH_CLIENT_SECRET` are encrypted Pages environment variables.
@@ -151,13 +163,49 @@ The token exchange must be server-side: GitHub's token endpoint sends no CORS he
 
 Everything else returns 403. GET-only plus SameSite=Lax means no CSRF token is needed in Phase 1; Phase 2's writes will need one.
 
-**Unauthenticated behaviour.** No cookie means no PR mode; pasting a PR URL shows a sign-in prompt in the Open modal. Pasted markdown and raw-URL reading are untouched and stay fully serverless — the single self-contained `dist/index.html` still works from a double-click for everything except PR mode.
-
 **Local development.** `wrangler pages dev --proxy 5173 -- bun run dev`, with a second callback URL registered on the GitHub App for localhost.
+
+### Method B — personal access token (fallback)
+
+Method A cannot cover three real situations: the offline single-file build has no Pages Function to proxy through; an org owner may not have approved the App install on a repo you need to read today; and a self-hosted copy of `dist/index.html` on some other origin has no OAuth callback registered. A pasted token covers all three.
+
+**What to paste.** A fine-grained PAT scoped to the repositories you review, with `Contents: read-only` and `Pull requests: read-only`, and a short expiry. Classic tokens are accepted but warned about at the point of entry: a classic token has no read-only private scope, so it necessarily carries blanket `repo` write.
+
+**Where it goes.** `sessionStorage` by default — gone when the tab closes. An explicit *remember on this device* checkbox moves it to `localStorage`, with the trade-off stated in the UI next to the checkbox, not buried in docs. Stored under its own key, never inside the prefs blob: prefs are rewritten on every preference change and are the kind of thing that ends up in an export or a log.
+
+**Where it travels.** Only as an `Authorization: Bearer` header to `https://api.github.com`. Never in a URL or query string, never to the Pages Function, never anywhere else. When a PAT is in use the app talks to GitHub directly and the proxy is bypassed entirely, so the Cloudflare side never sees the token.
+
+**Lifecycle.** Cleared on any 401, on *forget token*, and on sign-in via Method A. `validateToken` checks the shape (`ghp_` / `github_pat_` prefix, length) before the first request, so a mistyped paste fails immediately with a clear message instead of a confusing 401.
+
+**Precedence.** A live Method A session always wins. The PAT is consulted only when there is no session cookie. The app probes `GET /api/gh/user` once on load: a response means the Functions exist and Method A is offered; a network or 404 failure means this is a static build, and the UI offers only Method B.
+
+**The risk, stated plainly.** A token in `sessionStorage` or `localStorage` is readable by any script running on the origin. This app renders markdown authored by other people, and DOMPurify is the only thing standing between a hostile document and script execution. If that sanitization is ever bypassed, a Method A session cookie cannot be read by the attacker's script but a Method B token can be — and a stolen token keeps working from the attacker's machine until it is revoked or expires. That is the reason Method A is the default and Method B says so at the point of entry. Fine-grained scope and a short expiry bound the damage; they do not remove it.
+
+### One seam, two methods
+
+`core/pr.ts` already takes an injected `FetchLike`, so it does not know or care which method is in use. `lib/gh.ts` builds the right one:
+
+```ts
+type Auth = { mode: "session" } | { mode: "token"; token: string };
+
+// session → same-origin /api/gh/*, cookie sent automatically
+// token   → https://api.github.com/*, Authorization: Bearer
+function makeGhFetch(auth: Auth): FetchLike;
+```
+
+That is the whole integration. No branching inside the PR logic, and tests fake one function.
+
+### With neither method
+
+No session and no token means no PR mode: pasting a PR URL shows the sign-in / paste-token choice instead of an error. Public repos are *not* read unauthenticated — 60 requests an hour cannot survive a PR with a few files, and a half-working anonymous path is worse than a clear prompt.
+
+Pasted markdown and raw-URL reading are untouched either way. The self-contained `dist/index.html` still works from a double-click for everything, and with a PAT it now covers PR mode too.
 
 ## UI
 
 **Entry.** `resolveGitHub` gains a `"pr"` kind. Pasting `https://github.com/owner/repo/pull/123` into the existing Open modal works; today it falls through to a raw-branch fetch and 404s. Also accept `/pull/123/files` and `/pull/123/commits/:sha`.
+
+**Auth panel.** Shown inside the Open modal when a PR URL is pasted with no credentials. On a deployed origin: a *Sign in with GitHub* button first, and below it a collapsed *use a token instead* disclosure. On a static build, where the probe found no Functions, only the token path is shown, with one line saying why. The token field is `type="password"`, `autocomplete="off"`, paired with the *remember on this device* checkbox and a one-line statement of what that means. A link to GitHub's fine-grained-token page pre-fills nothing — it just gets you there. Once a token is stored, the panel collapses to its last 4 characters plus a *forget token* button.
 
 **PrBar** replaces TopBar's document title in diff mode:
 
@@ -187,7 +235,10 @@ Typed like the existing `SourceError`, rendered in the Open modal.
 
 | Case | Behaviour |
 | --- | --- |
-| Not signed in / refresh failed | Sign in with GitHub prompt |
+| Not signed in / refresh failed | Sign in with GitHub, or paste a token |
+| Token fails shape check | Reject before any request: "That doesn't look like a GitHub token" |
+| Token rejected (401) | Clear it, say it was rejected or has expired, offer re-entry |
+| Token lacks access to the repo (404) | GitHub returns 404 rather than 403 for private repos a token cannot see — say the token may not cover this repository, rather than claiming the PR does not exist |
 | App not installed on the repo | Message naming the repo, plus an install link |
 | PR has no markdown changes | Say so, link to the PR on GitHub |
 | Blob over 1 MB | Skip that file with a note in the picker |
@@ -204,6 +255,8 @@ Pure `bun test`, in the style of the existing 41 tests.
 - **blocks.ts** — fenced code containing blank lines; nested lists; tables; setext headings; raw HTML blocks; `line` is correct after each of these.
 - **align.ts** — a pure rewrap yields all `same`; a three-word edit inside a rewrapped paragraph yields exactly one `changed`; inserting a block at the top does not cascade every later block into `changed`.
 - **diff.ts** — tokenizing never splits inside `[text](url)` or inline code; sentinel characters present in the input are stripped, so a document cannot forge `<ins>`; code blocks diff by line; and the property that catches most engine bugs: **`toDiffHtml(x, x)` renders byte-identical to `toHtml(x)`**.
+- **token.ts** — shape validation accepts `ghp_` and `github_pat_`, rejects whitespace, truncation and a pasted URL; save honours the remember flag by writing to the right injected store; clear wipes both stores, not just the active one.
+- **lib/gh.ts** — `makeGhFetch({mode:"session"})` targets same-origin `/api/gh/*` and sets no `Authorization` header; `makeGhFetch({mode:"token"})` targets `api.github.com` and sets `Bearer`; the token never appears in the request URL. Assert this against a fake fetch that records every argument.
 - **pr.ts** — URL resolution table (`/pull/123`, `/files`, `/commits/:sha`, trailing slash, non-github.com host rejected); faked fetch for file listing, filtering, and pagination.
 
 The Pages Functions are covered by the allowlist and refresh paths being small pure helpers (`isAllowed(path)`, `shouldRefresh(status)`) tested directly; the handlers themselves stay thin enough to verify by hand.
@@ -215,6 +268,7 @@ Stated, not solved:
 - **Moves.** Block LCS reports a moved section as one removal plus one addition. Detecting moves is a second pass over unmatched blocks — add it when moves actually get annoying.
 - **Split view padding.** Aligned grid rows mean an asymmetric pair leaves whitespace on the shorter side.
 - **Similarity threshold.** Whether two unmatched blocks are a `changed` pair or an independent add/remove is a tuned number. Expect to adjust it against real PRs.
+- **A PAT is script-readable.** Accepted deliberately, bounded by fine-grained scope, short expiry, `sessionStorage` by default, and Method A being the default path. Two upgrades exist when it stops feeling acceptable: hold the token in a Web Worker so an XSS can use it but not steal it, and ship a CSP on the built file restricting `connect-src` and `form-action`. Neither is in Phase 1; the CSP is the cheaper of the two and only partial, since an image URL can still carry data out.
 
 ## Phase 2 preview
 
