@@ -128,3 +128,32 @@ describe("anchorFor", () => {
     expect(anchorFor(c, "LEFT", 155, 155)).toEqual({ side: "LEFT", line: 155 });
   });
 });
+
+/**
+ * A commit range's patch is not the pull request's diff. GitHub validates a
+ * review comment against the PR, so an anchor taken from a range can name a
+ * line the PR does not have — measured on withastro/docs#5, where 3 of 22
+ * files in one range offered exactly that. The app answers this by not
+ * offering comments under a range at all; this test records why.
+ */
+describe("a range's patch is not the pull request's diff", () => {
+  test("a range can show a line the whole PR does not", () => {
+    // The PR as a whole only touches line 40 of the file…
+    const prDiff = parsePatch(
+      ["@@ -40,1 +40,1 @@", "-final wording", "+final wording v3"].join("\n"),
+    );
+    // …but one commit inside it also rewrote line 1, later reverted.
+    const rangeDiff = parsePatch(
+      [
+        "@@ -1,1 +1,1 @@",
+        "-title",
+        "+title v2",
+        "@@ -40,1 +40,1 @@",
+        "-old",
+        "+final wording v2",
+      ].join("\n"),
+    );
+    expect(rangeDiff.right.has(1)).toBe(true);
+    expect(prDiff.right.has(1)).toBe(false);
+  });
+});

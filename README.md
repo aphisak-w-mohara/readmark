@@ -87,7 +87,7 @@ Blocks the pull request changed carry a `+` in the margin. It opens a comment bo
 
 Comments collect as a pending review and go up in one request with **Approve**, **Request changes** or **Comment**; a single remark can be posted on its own with **Comment** in the box. `c` opens the box on the block you are looking at, `⌘/Ctrl+Enter` saves the draft, `Escape` cancels.
 
-Only changed blocks are offered, because GitHub only accepts a comment on a line its diff actually shows — the commentable lines are read out of the patch, so the affordance appears exactly where it will work rather than failing on submit. Reviewing needs a token with **Pull requests: write**; a read-only one reads fine and is refused at submit, with the draft kept.
+Commenting is offered when you are viewing all commits, not a range: a range's line numbers belong to that range's head rather than the pull request's, so an anchor taken from one can name a line GitHub will not accept. Only changed blocks are offered, because GitHub only accepts a comment on a line its diff actually shows — the commentable lines are read out of the patch, so the affordance appears exactly where it will work rather than failing on submit. Reviewing needs a token with **Pull requests: write**; a read-only one reads fine and is refused at submit, with the draft kept.
 
 Not yet: seeing comments other people already left, replying, and resolving.
 

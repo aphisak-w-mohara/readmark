@@ -272,10 +272,15 @@ class ReadmarkStore {
         file,
         makeGhFetch(auth),
       );
-      // The patch decides which blocks can carry a comment at all.
+      // The patch decides which blocks can carry a comment at all — but
+      // only the pull request's own diff does. Under a commit range the
+      // patch describes that range, whose line numbers belong to the
+      // range's head rather than the PR's, so an anchor taken from it can
+      // name a line GitHub's diff does not have. Reading a range is fine;
+      // commenting from one is not offered.
       const diff = toDiffHtml(before, after, {
         highlight,
-        commentable: parsePatch(file.patch),
+        commentable: this.range ? undefined : parsePatch(file.patch),
       });
       this.diff = {
         ...diff,

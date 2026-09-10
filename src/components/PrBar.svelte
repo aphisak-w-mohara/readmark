@@ -53,6 +53,7 @@
     [
       files.markdown.length > 1 ? `${files.markdown.length} Markdown files` : "",
       files.otherCount ? `${files.otherCount} other` : "",
+      rangeCount ? "commenting needs all commits" : "",
     ]
       .filter(Boolean)
       .join(" · "),
