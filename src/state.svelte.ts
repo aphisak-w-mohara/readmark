@@ -10,12 +10,19 @@ import { loadPrefs, savePrefs, type Prefs, type StorageLike } from "./core/prefs
 import { toHtml, type Rendered } from "./core/markdown";
 import { toDiffHtml, type DiffDoc } from "./core/diff";
 import { highlight } from "./core/highlight";
-import { SourceError } from "./core/source";
+import { SourceError, type FetchLike } from "./core/source";
 import {
+  currentLogin,
   fetchPr,
   fetchSides,
+  lastReviewedCommit,
+  listCommits,
   listMarkdownFiles,
+  listMarkdownFilesBetween,
   resolvePR,
+  resolveRange,
+  type CommitRange,
+  type PrCommit,
   type PrFile,
   type PrFiles,
   type PrInfo,
@@ -61,6 +68,11 @@ class ReadmarkStore {
   files = $state<PrFiles | null>(null);
   activeFile = $state<PrFile | null>(null);
   diff = $state<DiffDoc | null>(null);
+  commits = $state<PrCommit[]>([]);
+  /** null = the pull request as a whole. */
+  range = $state<CommitRange | null>(null);
+  /** The commit this user last reviewed at, if they have. */
+  lastReviewSha = $state<string | null>(null);
   layout = $state<Layout>("unified");
   scope = $state<Scope>("all");
   busy = $state(false);
@@ -107,6 +119,9 @@ class ReadmarkStore {
     this.files = null;
     this.activeFile = null;
     this.diff = null;
+    this.commits = [];
+    this.range = null;
+    this.lastReviewSha = null;
   }
 
   /**
@@ -122,7 +137,11 @@ class ReadmarkStore {
     const gh = makeGhFetch(auth);
     this.busy = true;
     try {
-      const [pr, files] = await Promise.all([fetchPr(ref, gh), listMarkdownFiles(ref, gh)]);
+      const [pr, files, commits] = await Promise.all([
+        fetchPr(ref, gh),
+        listMarkdownFiles(ref, gh),
+        listCommits(ref, gh),
+      ]);
       if (!files.markdown.length)
         throw new SourceError(
           "http",
@@ -130,8 +149,63 @@ class ReadmarkStore {
         );
       this.pr = pr;
       this.files = files;
+      this.commits = commits;
+      this.range = null;
       this.mode = "diff";
       await this.openFile(files.markdown[0]);
+      // Best-effort: the range picker offers "since my last review" only
+      // when there is one, and never blocks the diff on finding out.
+      void this.findLastReview(ref, gh);
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  private async findLastReview(
+    ref: { owner: string; repo: string; number: number },
+    gh: FetchLike,
+  ) {
+    this.lastReviewSha = null;
+    const login = await currentLogin(gh);
+    if (!login) return;
+    try {
+      this.lastReviewSha = await lastReviewedCommit(ref, login, gh);
+    } catch {
+      this.lastReviewSha = null;
+    }
+  }
+
+  /** The two commits currently being diffed between. */
+  get shas(): { base: string; head: string } | null {
+    return this.pr ? resolveRange(this.pr, this.commits, this.range) : null;
+  }
+
+  /**
+   * Narrow the diff to a range of commits, or the whole PR when null. The
+   * file list is recomputed: a file touched outside the range is not part
+   * of this view, so the selection resets to the first that is.
+   */
+  async setRange(range: CommitRange | null) {
+    const pr = this.pr;
+    const auth = this.auth;
+    if (!pr || !auth) return;
+    const gh = makeGhFetch(auth);
+    this.busy = true;
+    try {
+      this.range = range;
+      const { base, head } = resolveRange(pr, this.commits, range);
+      const files = range
+        ? await listMarkdownFilesBetween(pr, base, head, gh)
+        : await listMarkdownFiles(pr, gh);
+      this.files = files;
+      if (!files.markdown.length) {
+        this.diff = null;
+        this.activeFile = null;
+        this.doc = { html: "", headings: [], title: "No Markdown in range" };
+        return;
+      }
+      const keep = files.markdown.find((f) => f.filename === this.activeFile?.filename);
+      await this.openFile(keep ?? files.markdown[0]);
     } finally {
       this.busy = false;
     }
@@ -144,7 +218,12 @@ class ReadmarkStore {
     if (!pr || !auth) return;
     this.busy = true;
     try {
-      const { before, after } = await fetchSides(pr, file, makeGhFetch(auth));
+      const { base, head } = resolveRange(pr, this.commits, this.range);
+      const { before, after } = await fetchSides(
+        { ...pr, baseSha: base, headSha: head },
+        file,
+        makeGhFetch(auth),
+      );
       const diff = toDiffHtml(before, after, { highlight });
       this.diff = {
         ...diff,

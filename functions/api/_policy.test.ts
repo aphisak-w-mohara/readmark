@@ -15,10 +15,19 @@ describe("isAllowed", () => {
     expect(isAllowed("/repos/o/r/pulls/42/files?per_page=100&page=1")).toBe(true);
     expect(isAllowed("/repos/o/r/contents/docs/guide.md?ref=abc")).toBe(true);
     expect(isAllowed("/repos/o/r/git/blobs/0123456789abcdef")).toBe(true);
+    expect(isAllowed("/repos/o/r/pulls/42/commits?per_page=100")).toBe(true);
+    expect(isAllowed("/repos/o/r/pulls/42/reviews")).toBe(true);
+    expect(isAllowed("/repos/o/r/compare/abc123...def456")).toBe(true);
+  });
+
+  test("a compare range is allowed but traversal inside it is not", () => {
+    expect(isAllowed("/repos/o/r/compare/v1.2.3...main")).toBe(true);
+    expect(isAllowed("/repos/o/r/compare/../../user")).toBe(false);
+    expect(isAllowed("/repos/o/r/compare/a..b")).toBe(false); // two dots is not a range
+    expect(isAllowed("/repos/o/r/compare/a...b/extra")).toBe(false);
   });
 
   test("refuses everything else, including writes and unrelated reads", () => {
-    expect(isAllowed("/repos/o/r/pulls/42/reviews")).toBe(false);
     expect(isAllowed("/repos/o/r/issues")).toBe(false);
     expect(isAllowed("/user/repos")).toBe(false);
     expect(isAllowed("/orgs/o/members")).toBe(false);
@@ -27,7 +36,10 @@ describe("isAllowed", () => {
 
   test("refuses path traversal and malformed paths", () => {
     expect(isAllowed("/repos/o/r/contents/../../../user")).toBe(false);
-    expect(isAllowed("/repos/o/r/contents/..%2f")).toBe(false); // ".." anywhere is enough
+    expect(isAllowed("/repos/o/r/contents/..%2fuser")).toBe(false); // encoded too
+    expect(isAllowed("/repos/o/r/contents/%2e%2e/user")).toBe(false);
+    // A dot-dot inside a filename is not traversal and must still work.
+    expect(isAllowed("/repos/o/r/contents/docs/notes..md")).toBe(true);
     expect(isAllowed("repos/o/r/pulls/1")).toBe(false);
     expect(isAllowed("/repos/o/r/contents/a\\b")).toBe(false);
   });

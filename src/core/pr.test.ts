@@ -1,5 +1,16 @@
 import { test, expect, describe } from "bun:test";
-import { resolvePR, fetchPr, listMarkdownFiles, fetchSides, type PrInfo } from "./pr";
+import {
+  resolvePR,
+  fetchPr,
+  listMarkdownFiles,
+  listMarkdownFilesBetween,
+  listCommits,
+  resolveRange,
+  currentLogin,
+  lastReviewedCommit,
+  fetchSides,
+  type PrInfo,
+} from "./pr";
 import { SourceError, type FetchLike } from "./source";
 
 const b64 = (s: string) => Buffer.from(s, "utf8").toString("base64");
@@ -199,5 +210,142 @@ describe("fetchSides", () => {
       "/repos/o/r/contents/README.md": { size: 2_000_000, content: "", encoding: "base64" },
     });
     expect(fetchSides(PR, file, fn)).rejects.toThrow(/too large/);
+  });
+});
+
+describe("commits and ranges", () => {
+  const commits = [
+    { sha: "c1", parent: "base0", subject: "first", author: "a", date: "" },
+    { sha: "c2", parent: "c1", subject: "second", author: "a", date: "" },
+    { sha: "c3", parent: "c2", subject: "third", author: "a", date: "" },
+  ];
+
+  test("listCommits keeps order, subject line and first parent", async () => {
+    const { fn } = fakeFetch({
+      "/repos/o/r/pulls/42/commits": [
+        {
+          sha: "aaa",
+          parents: [{ sha: "p1" }, { sha: "p2" }],
+          commit: {
+            message: "feat: add thing\n\nlong body here",
+            author: { name: "N", date: "d" },
+          },
+          author: { login: "octo" },
+        },
+      ],
+    });
+    const out = await listCommits({ owner: "o", repo: "r", number: 42 }, fn);
+    expect(out).toEqual([
+      { sha: "aaa", parent: "p1", subject: "feat: add thing", author: "octo", date: "d" },
+    ]);
+  });
+
+  test("listCommits falls back to the commit author when there is no account", async () => {
+    const { fn } = fakeFetch({
+      "/repos/o/r/pulls/42/commits": [
+        {
+          sha: "a",
+          parents: [],
+          commit: { message: "x", author: { name: "Ada", date: "d" } },
+          author: null,
+        },
+      ],
+    });
+    const out = await listCommits({ owner: "o", repo: "r", number: 42 }, fn);
+    expect(out[0]).toMatchObject({ author: "Ada", parent: "" });
+  });
+
+  test("no range diffs the pull request itself", () => {
+    expect(resolveRange(PR, commits, null)).toEqual({ base: "base1", head: "head1" });
+  });
+
+  test("a range starts at the parent of its first commit", () => {
+    expect(resolveRange(PR, commits, { fromSha: "c2", toSha: "c3" })).toEqual({
+      base: "c1",
+      head: "c3",
+    });
+  });
+
+  test("a single commit is its parent against itself", () => {
+    expect(resolveRange(PR, commits, { fromSha: "c2", toSha: "c2" })).toEqual({
+      base: "c1",
+      head: "c2",
+    });
+  });
+
+  test("the whole range still starts from the PR base, not a missing parent", () => {
+    const orphan = [{ sha: "c1", parent: "", subject: "s", author: "a", date: "" }];
+    expect(resolveRange(PR, orphan, { fromSha: "c1", toSha: "c1" })).toEqual({
+      base: "base1",
+      head: "c1",
+    });
+  });
+
+  test("an unknown sha falls back to the whole pull request", () => {
+    expect(resolveRange(PR, commits, { fromSha: "nope", toSha: "c3" })).toEqual({
+      base: "base1",
+      head: "head1",
+    });
+  });
+
+  test("listMarkdownFilesBetween filters a compare the same way", async () => {
+    const { fn, seen } = fakeFetch({
+      "/repos/o/r/compare/c1...c3": {
+        files: [
+          { filename: "a.md", status: "modified", additions: 1, deletions: 1 },
+          { filename: "b.ts", status: "modified", additions: 1, deletions: 1 },
+        ],
+      },
+    });
+    const out = await listMarkdownFilesBetween(
+      { owner: "o", repo: "r", number: 42 },
+      "c1",
+      "c3",
+      fn,
+    );
+    expect(out.markdown.map((f) => f.filename)).toEqual(["a.md"]);
+    expect(out.otherCount).toBe(1);
+    expect(seen[0]).toContain("/compare/c1...c3");
+  });
+
+  test("a compare with no files listed is empty, not a crash", async () => {
+    const { fn } = fakeFetch({ "/repos/o/r/compare/x...y": { status: "identical" } });
+    const out = await listMarkdownFilesBetween({ owner: "o", repo: "r", number: 42 }, "x", "y", fn);
+    expect(out).toEqual({ markdown: [], otherCount: 0 });
+  });
+});
+
+describe("last review", () => {
+  const ref = { owner: "o", repo: "r", number: 42 };
+
+  test("finds this user's most recent submitted review", async () => {
+    const { fn } = fakeFetch({
+      "/repos/o/r/pulls/42/reviews": [
+        { user: { login: "me" }, state: "COMMENTED", commit_id: "old", submitted_at: "1" },
+        { user: { login: "other" }, state: "APPROVED", commit_id: "theirs", submitted_at: "2" },
+        { user: { login: "me" }, state: "CHANGES_REQUESTED", commit_id: "mine", submitted_at: "3" },
+      ],
+    });
+    expect(await lastReviewedCommit(ref, "me", fn)).toBe("mine");
+  });
+
+  test("ignores pending reviews, which have no commit yet", async () => {
+    const { fn } = fakeFetch({
+      "/repos/o/r/pulls/42/reviews": [
+        { user: { login: "me" }, state: "APPROVED", commit_id: "done", submitted_at: "1" },
+        { user: { login: "me" }, state: "PENDING", commit_id: null, submitted_at: null },
+      ],
+    });
+    expect(await lastReviewedCommit(ref, "me", fn)).toBe("done");
+  });
+
+  test("never reviewed is null, not an error", async () => {
+    const { fn } = fakeFetch({ "/repos/o/r/pulls/42/reviews": [] });
+    expect(await lastReviewedCommit(ref, "me", fn)).toBeNull();
+  });
+
+  test("currentLogin swallows a failure rather than blocking the diff", async () => {
+    const { fn } = fakeFetch({});
+    expect(await currentLogin(fn)).toBeNull();
   });
 });

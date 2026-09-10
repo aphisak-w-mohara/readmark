@@ -11,6 +11,7 @@
   import SourceModal from "./components/SourceModal.svelte";
   import PrBar from "./components/PrBar.svelte";
   import DiffView from "./components/DiffView.svelte";
+  import CommitPicker from "./components/CommitPicker.svelte";
   import type { PrFile } from "./core/pr";
   import type { Scope } from "./state.svelte";
 
@@ -23,6 +24,7 @@
 
   let aaOpen = $state(false);
   let sourceOpen = $state(false);
+  let commitsOpen = $state(false);
 
   const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -31,6 +33,7 @@
 
   // Does this origin have a sign-in backend? A static build does not.
   store.checkSession();
+
 
 
 
@@ -238,15 +241,16 @@
   function closePanels() {
     aaOpen = false;
     sourceOpen = false;
+    commitsOpen = false;
   }
   function onKey(e: KeyboardEvent) {
     if (e.key === "Escape") {
-      if (aaOpen || sourceOpen) closePanels();
+      if (aaOpen || sourceOpen || commitsOpen) closePanels();
       else if (store.zen) toggleZen();
       return;
     }
     // j/k step between changes, but never while something is being typed into.
-    if (store.mode !== "diff" || aaOpen || sourceOpen) return;
+    if (store.mode !== "diff" || aaOpen || sourceOpen || commitsOpen) return;
     const t = e.target as HTMLElement | null;
     if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
     if (e.key === "j") stepChange(1);
@@ -256,6 +260,15 @@
   const changeCount = $derived(
     store.diff ? store.diff.rows.filter((r) => r.op !== "same").length : 0,
   );
+
+  // How many commits the current range covers; 0 means the whole PR.
+  const rangeCount = $derived.by(() => {
+    const r = store.range;
+    if (!r) return 0;
+    const a = store.commits.findIndex((c) => c.sha === r.fromSha);
+    const b = store.commits.findIndex((c) => c.sha === r.toSha);
+    return a >= 0 && b >= 0 ? b - a + 1 : 0;
+  });
 
   async function pickFile(f: PrFile) {
     changeIndex = 0;
@@ -311,6 +324,9 @@
       busy={store.busy}
       {changeIndex}
       {changeCount}
+      commitCount={store.commits.length}
+      rangeCount={rangeCount}
+      onCommits={() => (commitsOpen = true)}
       onFile={pickFile}
       onLayout={(l) => (store.layout = l)}
       onScope={setScope}
@@ -355,7 +371,19 @@
     onForget={() => store.forgetToken()}
   />
 
-  <div id="scrim" class:show={aaOpen || sourceOpen} onclick={closePanels} role="presentation"></div>
+  <CommitPicker
+    open={commitsOpen}
+    commits={store.commits}
+    range={store.range}
+    lastReviewSha={store.lastReviewSha}
+    onClose={() => (commitsOpen = false)}
+    onApply={(r) => {
+      changeIndex = 0;
+      store.setRange(r);
+    }}
+  />
+
+  <div id="scrim" class:show={aaOpen || sourceOpen || commitsOpen} onclick={closePanels} role="presentation"></div>
 
   {#if store.zen}
     <button id="zenexit" class:peek onclick={toggleZen} title="Exit Zen (Esc)" aria-label="Exit Zen mode">

@@ -4,6 +4,8 @@
 
   interface Props {
     files: PrFiles;
+    commitCount: number;
+    rangeCount: number;
     active: PrFile | null;
     layout: Layout;
     scope: Scope;
@@ -14,10 +16,13 @@
     onLayout: (l: Layout) => void;
     onScope: (s: Scope) => void;
     onStep: (delta: number) => void;
+    onCommits: () => void;
     onExit: () => void;
   }
   let {
     files,
+    commitCount,
+    rangeCount,
     active,
     layout,
     scope,
@@ -28,6 +33,7 @@
     onLayout,
     onScope,
     onStep,
+    onCommits,
     onExit,
   }: Props = $props();
 
@@ -67,6 +73,18 @@
       <svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6" /></svg>
     </span>
   </label>
+
+  {#if commitCount}
+    <button
+      class="pr-commits"
+      class:ranged={rangeCount > 0}
+      onclick={onCommits}
+      title="Choose which commits to view"
+    >
+      {#if rangeCount}{rangeCount} of {commitCount} commits{:else}{commitCount} commits{/if}
+      <svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6" /></svg>
+    </button>
+  {/if}
 
   {#if note}
     <span class="pr-note">{note}</span>

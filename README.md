@@ -75,6 +75,7 @@ Paste a pull request URL into **Open → Pull request**. Readmark lists the Mark
 - **Split** — before and after side by side, each column marking only its own half of the edit.
 - **Whole doc / Changes only** — collapse the untouched blocks when you just want the edits.
 - `j` and `k` jump between changes. On a long README with three changed words, that is the whole review.
+- **Commit range** — the commits chip narrows the diff to a run of commits, or to everything since your last review. A range is read as "the parent of the first commit against the last", which is the work those commits did; the file list is recomputed for the range, since a file touched outside it is not part of that view.
 
 Rewrapping is invisible: blocks are matched on their words with whitespace collapsed, so a reflowed paragraph is the same paragraph. Code blocks, raw HTML, and edits that change a block's structure (a bullet list turned numbered) are flagged whole rather than word-marked, because word marks there would be misleading.
 

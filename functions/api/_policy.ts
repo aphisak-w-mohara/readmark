@@ -11,17 +11,24 @@ const ALLOWED: RegExp[] = [
   /^\/user$/,
   /^\/repos\/[^/]+\/[^/]+\/pulls\/\d+$/,
   /^\/repos\/[^/]+\/[^/]+\/pulls\/\d+\/files$/,
+  /^\/repos\/[^/]+\/[^/]+\/pulls\/\d+\/commits$/,
+  /^\/repos\/[^/]+\/[^/]+\/pulls\/\d+\/reviews$/,
+  /^\/repos\/[^/]+\/[^/]+\/compare\/[0-9a-zA-Z._-]+\.\.\.[0-9a-zA-Z._-]+$/,
   /^\/repos\/[^/]+\/[^/]+\/contents\/.+$/,
   /^\/repos\/[^/]+\/[^/]+\/git\/blobs\/[0-9a-f]{7,40}$/,
 ];
 
 /**
  * Everything not on the list is refused. The query string is ignored for
- * matching but path traversal is not: `..` never reaches GitHub.
+ * matching, but traversal is not: a path segment of "." or ".." never
+ * reaches GitHub. Checking segments rather than the raw string is what lets
+ * `compare/a...b` through while `../` stays blocked.
  */
 export function isAllowed(pathWithQuery: string): boolean {
   const path = pathWithQuery.split("?")[0];
-  if (!path.startsWith("/") || path.includes("..") || path.includes("\\")) return false;
+  if (!path.startsWith("/") || path.includes("\\")) return false;
+  if (path.split("/").some((seg) => seg === "." || seg === "..")) return false;
+  if (/%2e|%2f|%5c/i.test(path)) return false; // no encoded traversal either
   return ALLOWED.some((re) => re.test(path));
 }
 
