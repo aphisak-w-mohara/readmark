@@ -52,6 +52,35 @@ export function fenceParts(src: string): { lang: string; body: string } {
   return { lang, body: lines.slice(1, last ? -1 : undefined).join("\n") };
 }
 
+/**
+ * Diff markers. The differ threads these control characters through the
+ * parser so insert/delete runs survive rendering; built from char codes so
+ * they never appear literally in a regex.
+ */
+export const MARK = {
+  delOpen: String.fromCharCode(4),
+  delClose: String.fromCharCode(5),
+  insOpen: String.fromCharCode(6),
+  insClose: String.fromCharCode(7),
+} as const;
+
+const DEL_RUN = new RegExp(MARK.delOpen + "[\\s\\S]*?" + MARK.delClose, "g");
+const INS_TAGS = new RegExp("[" + MARK.insOpen + MARK.insClose + "]", "g");
+const ANY_MARK = new RegExp(
+  "[" + MARK.delOpen + MARK.delClose + MARK.insOpen + MARK.insClose + "]",
+  "g",
+);
+
+/** Read marked source as the after side: deletions dropped, insertions kept. */
+export function afterText(s: string): string {
+  return s.replace(DEL_RUN, "").replace(INS_TAGS, "");
+}
+
+/** Drop every marker, keeping all the text on both sides. */
+export function stripMarks(s: string): string {
+  return s.replace(ANY_MARK, "");
+}
+
 const isBlank = (l: string) => /^\s*$/.test(l);
 const LIST_ITEM = /^(\s*)([-+*]|\d+[.)])\s+/;
 const HTML_OPEN = /^\s*<(\/?[a-zA-Z][\w-]*|!--)/;

@@ -7,7 +7,7 @@
  */
 import { escapeHtml, escapeAttr, safeUrl } from "./escape";
 import { makeSlugger } from "./slug";
-import { splitBlocks, fenceParts, stripInline, type Block } from "./blocks";
+import { splitBlocks, fenceParts, stripInline, afterText, type Block } from "./blocks";
 
 export interface Heading {
   level: number;
@@ -45,15 +45,19 @@ function anchor(text: string, url: string, title?: string): string {
   return `<a href="${escapeAttr(safeUrl(url))}"${title ? ` title="${escapeAttr(title)}"` : ""} target="_blank" rel="noopener">${text}</a>`;
 }
 
+const REF_DEF = /^[ ]{0,3}\[([^\]]+)\]:[ \t]*<?([^\s>]+)>?(?:[ \t]+["'(]([^"')]+)["')])?[ \t]*$/gm;
+
+/** Remove `[label]: url "title"` definitions without recording them. */
+export function stripRefDefs(src: string): string {
+  return src.replace(REF_DEF, "");
+}
+
 /** Pull `[label]: url "title"` definitions out of the source and record them. */
 function extractRefs(src: string): string {
-  return src.replace(
-    /^[ ]{0,3}\[([^\]]+)\]:[ \t]*<?([^\s>]+)>?(?:[ \t]+["'(]([^"')]+)["')])?[ \t]*$/gm,
-    (_m, label: string, url: string, title?: string) => {
-      REFS[label.trim().toLowerCase()] = { url, title };
-      return "";
-    },
-  );
+  return src.replace(REF_DEF, (_m, label: string, url: string, title?: string) => {
+    REFS[label.trim().toLowerCase()] = { url, title };
+    return "";
+  });
 }
 
 function inline(src: string): string {
@@ -238,7 +242,9 @@ function renderBlock(b: Block, ctx: Ctx): string {
       const atx = lines[0].match(/^(#{1,6})\s+(.*?)\s*#*\s*$/);
       const level = atx ? atx[1].length : lines[1].trim()[0] === "=" ? 1 : 2;
       const raw = atx ? atx[2] : lines[0].trim();
-      const text = stripInline(raw);
+      // The outline reads the after side: deleted runs drop out, inserted
+      // ones stay, so an id is the same whether or not marks are shown.
+      const text = stripInline(afterText(raw));
       const id = ctx.slug(text);
       ctx.headings.push({ level, text, id });
       return `<h${level} id="${id}">${inline(raw)}</h${level}>`;
@@ -271,6 +277,27 @@ function parseBlocks(src: string, ctx: Ctx): string {
   return splitBlocks(src)
     .map((b) => renderBlock(b, ctx))
     .join("\n");
+}
+
+/**
+ * Render a list of block sources one at a time, sharing a single slugger and
+ * one set of link definitions. The differ needs each block's HTML separately
+ * so it can lay them out in rows; `toHtml` only ever hands back one string.
+ */
+export function renderBlockList(
+  srcs: string[],
+  opts: MarkdownOptions & { refsFrom?: string } = {},
+): { html: string[]; headings: Heading[] } {
+  const hl = opts.highlight ?? ((c: string) => escapeHtml(c));
+  REFS = {};
+  if (opts.refsFrom !== undefined) extractRefs(opts.refsFrom);
+  const ctx: Ctx = { hl, slug: makeSlugger(), headings: [] };
+  const html = srcs.map((s) =>
+    splitBlocks(s)
+      .map((b) => renderBlock(b, ctx))
+      .join("\n"),
+  );
+  return { html, headings: ctx.headings };
 }
 
 /** Render Markdown to HTML plus the outline and title derived during the parse. */
