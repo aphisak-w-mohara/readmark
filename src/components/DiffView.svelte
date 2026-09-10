@@ -34,13 +34,6 @@
   const bodies = $derived(new Map(draft.map((c) => [anchorKey(c.path, c), c.body])));
   const bodyAt = (a: Anchor) => (path ? (bodies.get(anchorKey(path, a)) ?? "") : "");
 
-  // A different document means the editor's row no longer exists.
-  $effect(() => {
-    // oxlint-disable-next-line no-unused-expressions -- track the document
-    diff;
-    openRow = null;
-  });
-
   /** Opened from here and from App's `c` shortcut, which owns the keymap. */
   export function openComment(row: DiffRow) {
     if (row.anchor && path && onSave) openRow = row;
@@ -56,10 +49,11 @@
 
   let opened = $state(new Set<number>());
 
-  // Reset the expanded folds whenever a different document is shown.
+  // A new document invalidates both the open editor and the expanded folds.
   $effect(() => {
     // oxlint-disable-next-line no-unused-expressions -- track the document identity
     diff;
+    openRow = null;
     opened = new Set();
   });
 
@@ -95,6 +89,7 @@
   });
 
   const label = (n: number) => `${n} unchanged block${n === 1 ? "" : "s"}`;
+  const itemKey = (item: Item) => (item.kind === "row" ? "r" + item.index : "f" + item.from);
 
   // A file that exists on only one side has nothing to compare against, so
   // it reads as the document it is, with the fact stated once at the top.
@@ -110,6 +105,12 @@
 {#if banner}
   <p class="diff-banner" data-whole={diff.whole}>{banner}</p>
 {/if}
+
+{#snippet foldBtn(item: Fold, span: boolean)}
+  <button class="diff-fold" class:span onclick={() => (opened = new Set([...opened, item.from]))}>
+    ⋯ {label(item.rows.length)}
+  </button>
+{/snippet}
 
 {#snippet commentSlot(row: DiffRow, html: string)}
   {@const a = path && onSave ? row.anchor : null}
@@ -151,16 +152,14 @@
     <div class="diff-row">{@html diff.whole === "removed" ? row.before : row.after}</div>
   {/each}
 {:else if layout === "unified"}
-  {#each items as item (item.kind === "row" ? "r" + item.index : "f" + item.from)}
+  {#each items as item (itemKey(item))}
     {#if item.kind === "fold"}
       {#if opened.has(item.from)}
         {#each item.rows as row, i (i)}
           <div class="diff-row" data-op="same">{@html row.unified}</div>
         {/each}
       {:else}
-        <button class="diff-fold" onclick={() => (opened = new Set([...opened, item.from]))}>
-          ⋯ {label(item.rows.length)}
-        </button>
+        {@render foldBtn(item, false)}
       {/if}
     {:else}
       <div class="diff-row" data-op={item.row.op} data-marked={item.row.marked}>
@@ -172,7 +171,7 @@
   <div class="diff-split">
     <div class="diff-col-head">Before</div>
     <div class="diff-col-head">After</div>
-    {#each items as item (item.kind === "row" ? "r" + item.index : "f" + item.from)}
+    {#each items as item (itemKey(item))}
       {#if item.kind === "fold"}
         {#if opened.has(item.from)}
           {#each item.rows as row, i (i)}
@@ -180,12 +179,7 @@
             <div class="diff-side is-after" data-op="same">{@html row.after}</div>
           {/each}
         {:else}
-          <button
-            class="diff-fold span"
-            onclick={() => (opened = new Set([...opened, item.from]))}
-          >
-            ⋯ {label(item.rows.length)}
-          </button>
+          {@render foldBtn(item, true)}
         {/if}
       {:else}
         <div class="diff-side is-before" data-op={item.row.op === "added" ? "absent" : item.row.op}>

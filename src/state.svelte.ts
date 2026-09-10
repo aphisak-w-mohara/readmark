@@ -6,7 +6,7 @@
  * highlighting, diffing). The core never imports Svelte.
  */
 import { loadPrefs, savePrefs, type Prefs, type StorageLike } from "./core/prefs";
-import { toHtml, type Rendered } from "./core/markdown";
+import type { Rendered } from "./core/markdown";
 import { toDiffHtml, type DiffDoc } from "./core/diff";
 import { highlight } from "./core/highlight";
 import { SourceError, type FetchLike } from "./core/source";
@@ -32,7 +32,7 @@ import { clearToken, loadToken, saveToken, type TokenStore, type TokenStores } f
 import { parsePatch } from "./core/patch";
 import { putComment, type Anchor, type DraftComment, type ReviewEvent } from "./core/review";
 import { makeGhFetch, probeSession, SIGN_IN_ENABLED, type Auth } from "./lib/gh";
-import { clean } from "./lib/render";
+import { clean, render } from "./lib/render";
 
 const memory: StorageLike = (() => {
   const m = new Map<string, string>();
@@ -136,8 +136,7 @@ class ReadmarkStore {
 
   /** Render Markdown, then sanitize the HTML. */
   load(markdown: string) {
-    const rendered = toHtml(markdown, { highlight });
-    this.doc = { ...rendered, html: clean(rendered.html) };
+    this.doc = render(markdown);
     this.mode = "doc";
     this.pr = null;
     this.files = null;
@@ -214,6 +213,16 @@ class ReadmarkStore {
     }
   }
 
+  /**
+   * Whether comments can be written at all. A range's line numbers belong
+   * to the range's head rather than the pull request's, so anchors taken
+   * from one can name a line GitHub's diff does not have. One rule, read
+   * by the anchors, the submit commit, and the review bar alike.
+   */
+  get commenting(): boolean {
+    return this.range === null;
+  }
+
   /** The two commits currently being diffed between. */
   get shas(): { base: string; head: string } | null {
     return this.pr ? resolveRange(this.pr, this.commits, this.range) : null;
@@ -263,15 +272,10 @@ class ReadmarkStore {
         file,
         makeGhFetch(auth),
       );
-      // The patch decides which blocks can carry a comment at all — but
-      // only the pull request's own diff does. Under a commit range the
-      // patch describes that range, whose line numbers belong to the
-      // range's head rather than the PR's, so an anchor taken from it can
-      // name a line GitHub's diff does not have. Reading a range is fine;
-      // commenting from one is not offered.
+      // Anchors come from the patch, and only when commenting applies.
       const diff = toDiffHtml(before, after, {
         highlight,
-        commentable: this.range ? undefined : parsePatch(file.patch),
+        commentable: this.commenting ? parsePatch(file.patch) : undefined,
       });
       this.diff = {
         ...diff,
@@ -296,7 +300,10 @@ class ReadmarkStore {
 
   /** The commit a comment written now should attach to. */
   private get headSha(): string | null {
-    return this.shas?.head ?? null;
+    // Never a range's head: a draft written on the whole-PR view survives
+    // a later range pick, and posting it against a mid-PR commit is the
+    // very thing anchoring against the PR's diff exists to avoid.
+    return this.commenting ? (this.pr?.headSha ?? null) : null;
   }
 
   /** Write, edit, or (with an empty body) drop a comment on one anchor. */

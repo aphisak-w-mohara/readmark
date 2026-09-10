@@ -178,14 +178,19 @@
     applyScroll();
   }
 
-  /** Anchors for the change-to-change jump: every row that is not untouched. */
+/**
+   * The elements `j`/`k` step through — one per changed row, in row order.
+   * Split renders a changed row on both sides, so only the after side is
+   * taken: this list shares `changeIndex` with `changeRows` and the two
+   * drifting is what sends `c` to the wrong block.
+   */
   function changeEls(): HTMLElement[] {
-    if (!articleEl) return [];
+    if (!articleEl || !changeCount) return [];
     return [
       ...articleEl.querySelectorAll<HTMLElement>(
-        '.diff-row:not([data-op="same"]), .diff-side[data-op="changed"], .diff-side[data-op="added"], .diff-side[data-op="removed"]',
+        '.diff-row:not([data-op="same"]), .diff-side.is-after[data-op="changed"], .diff-side[data-op="added"], .diff-side[data-op="removed"]',
       ),
-    ].filter((el, i, all) => i === 0 || el !== all[i - 1]);
+    ];
   }
 
   function stepChange(delta: number) {
@@ -262,7 +267,7 @@
     // `c` comments on the change the cursor is already on, rather than
     // re-deriving "what am I looking at" from layout reads.
     else if (e.key === "c") {
-      const row = changeRows()[changeIndex];
+      const row = changeRows[changeIndex];
       if (row) {
         e.preventDefault();
         diffView?.openComment(row);
@@ -270,16 +275,14 @@
     }
   }
 
-  // Nothing to step between when every block is a change: a wholly new or
-  // deleted file is read straight through.
-  /** The rows `j`/`k` step through, in the same order. */
-  function changeRows() {
-    return store.diff && !store.diff.whole ? store.diff.rows.filter((r) => r.op !== "same") : [];
-  }
-
-  const changeCount = $derived(
-    store.diff && !store.diff.whole ? store.diff.rows.filter((r) => r.op !== "same").length : 0,
+  /**
+   * The changed rows, in document order. A wholly new or deleted file has
+   * nothing to step between — every block is a change — so it yields none.
+   */
+  const changeRows = $derived(
+    store.diff && !store.diff.whole ? store.diff.rows.filter((r) => r.op !== "same") : [],
   );
+  const changeCount = $derived(changeRows.length);
 
   // How many commits the current range covers; 0 means the whole PR.
   const rangeCount = $derived.by(() => {
@@ -387,7 +390,7 @@
     </main>
   </div>
 
-  {#if store.mode === "diff" && (store.draft.length || store.submitted || store.reviewError)}
+  {#if store.mode === "diff" && store.commenting && (store.draft.length || store.submitted || store.reviewError)}
     <ReviewBar
       count={store.draft.length}
       busy={store.submitting}

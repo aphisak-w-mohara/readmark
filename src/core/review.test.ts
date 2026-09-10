@@ -1,7 +1,6 @@
 import { test, expect, describe } from "bun:test";
 import {
   putComment,
-  commentAt,
   anchorKey,
   reviewPayload,
   commentPayload,
@@ -45,13 +44,6 @@ describe("the draft", () => {
 
   test("bodies are trimmed", () => {
     expect(putComment([], "a.md", R(3), "  padded  ")[0].body).toBe("padded");
-  });
-
-  test("commentAt finds a comment by anchor, and nothing for null", () => {
-    const d = putComment([], "a.md", R(3), "here");
-    expect(commentAt(d, "a.md", R(3))?.body).toBe("here");
-    expect(commentAt(d, "a.md", R(4))).toBeNull();
-    expect(commentAt(d, "a.md", null)).toBeNull();
   });
 
   test("a multi-line anchor keys on its last line, so the range can grow", () => {

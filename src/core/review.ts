@@ -12,7 +12,7 @@
 
 import type { Anchor, Side } from "./patch";
 
-export type { Anchor, Side };
+export type { Anchor };
 
 export interface DraftComment extends Anchor {
   path: string;
@@ -38,17 +38,6 @@ export function putComment(
   const text = body.trim();
   if (!text) return without; // clearing the body removes the comment
   return [...without, { ...anchor, path, body: text }];
-}
-
-/** The comment on an anchor, if one has been written. */
-export function commentAt(
-  draft: DraftComment[],
-  path: string,
-  anchor: Anchor | null,
-): DraftComment | null {
-  if (!anchor) return null;
-  const key = anchorKey(path, anchor);
-  return draft.find((c) => anchorKey(c.path, c) === key) ?? null;
 }
 
 interface WireComment {

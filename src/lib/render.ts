@@ -7,7 +7,7 @@
  * rather than only whichever one the author remembered.
  */
 import DOMPurify from "dompurify";
-import { toHtml } from "../core/markdown";
+import { toHtml, type Rendered } from "../core/markdown";
 import { highlight } from "../core/highlight";
 
 const ADD_ATTR = ["target", "loading"];
@@ -15,7 +15,11 @@ const ADD_ATTR = ["target", "loading"];
 /** Sanitize already-rendered HTML. */
 export const clean = (html: string): string => DOMPurify.sanitize(html, { ADD_ATTR });
 
-/** Render Markdown and sanitize it in one step. */
-export function renderMd(src: string): string {
-  return clean(toHtml(src, { highlight }).html);
+/** Render a document: sanitized HTML, plus the outline and title. */
+export function render(src: string): Rendered {
+  const r = toHtml(src, { highlight });
+  return { ...r, html: clean(r.html) };
 }
+
+/** Render a fragment — a comment body — to sanitized HTML. */
+export const renderMd = (src: string): string => render(src).html;
