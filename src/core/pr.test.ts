@@ -9,6 +9,8 @@ import {
   currentLogin,
   lastReviewedCommit,
   fetchSides,
+  submitReview,
+  postComment,
   type PrInfo,
 } from "./pr";
 import { SourceError, type FetchLike } from "./source";
@@ -347,5 +349,73 @@ describe("last review", () => {
   test("currentLogin swallows a failure rather than blocking the diff", async () => {
     const { fn } = fakeFetch({});
     expect(await currentLogin(fn)).toBeNull();
+  });
+});
+
+describe("writing a review", () => {
+  const ref = { owner: "o", repo: "r", number: 42 };
+  const draft = [{ path: "a.md", side: "RIGHT" as const, line: 3, body: "a note" }];
+
+  /** Records what was sent, so the request body itself is the assertion. */
+  function recorder(status = 200, body = '{"id":1,"html_url":"u"}') {
+    const sent: { url: string; method?: string; body?: unknown }[] = [];
+    const fn: FetchLike = async (url, init) => {
+      sent.push({
+        url,
+        method: init?.method,
+        body: init?.body ? JSON.parse(init.body) : undefined,
+      });
+      return { ok: status < 400, status, text: async () => body };
+    };
+    return { fn, sent };
+  }
+
+  test("a review POSTs the whole draft with the commit read", async () => {
+    const { fn, sent } = recorder();
+    await submitReview(ref, "headsha", "APPROVE", "", draft, fn);
+    expect(sent[0].url).toBe("/repos/o/r/pulls/42/reviews");
+    expect(sent[0].method).toBe("POST");
+    expect(sent[0].body).toEqual({
+      commit_id: "headsha",
+      event: "APPROVE",
+      comments: [{ path: "a.md", line: 3, side: "RIGHT", body: "a note" }],
+    });
+  });
+
+  test("a single comment goes to the comments endpoint", async () => {
+    const { fn, sent } = recorder();
+    await postComment(ref, "headsha", "a.md", { side: "RIGHT", line: 7 }, "just this", fn);
+    expect(sent[0].url).toBe("/repos/o/r/pulls/42/comments");
+    expect(sent[0].body).toEqual({
+      commit_id: "headsha",
+      path: "a.md",
+      line: 7,
+      side: "RIGHT",
+      body: "just this",
+    });
+  });
+
+  test("a 403 names the permission the token is missing", async () => {
+    const { fn } = recorder(403, '{"message":"Resource not accessible by personal access token"}');
+    expect(submitReview(ref, "h", "APPROVE", "", draft, fn)).rejects.toThrow(
+      /Pull requests: write/,
+    );
+  });
+
+  test("a 422 explains that the diff moved, and quotes GitHub", async () => {
+    const { fn } = recorder(
+      422,
+      '{"message":"Validation Failed","errors":[{"message":"line must be part of the diff"}]}',
+    );
+    expect(submitReview(ref, "h", "COMMENT", "s", draft, fn)).rejects.toThrow(
+      /line must be part of the diff/,
+    );
+  });
+
+  test("a network failure says the draft is safe", async () => {
+    const fn: FetchLike = async () => {
+      throw new Error("offline");
+    };
+    expect(submitReview(ref, "h", "APPROVE", "", draft, fn)).rejects.toThrow(/draft is intact/);
   });
 });

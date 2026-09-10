@@ -18,7 +18,7 @@ export interface FetchResponse {
 }
 export type FetchLike = (
   url: string,
-  init?: { headers?: Record<string, string> },
+  init?: { headers?: Record<string, string>; method?: string; body?: string },
 ) => Promise<FetchResponse>;
 
 export interface Loaded {

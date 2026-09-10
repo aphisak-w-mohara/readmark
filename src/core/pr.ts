@@ -8,6 +8,13 @@
  * straight to api.github.com with a token.
  */
 import { SourceError, type FetchLike } from "./source";
+import {
+  commentPayload,
+  reviewPayload,
+  type Anchor,
+  type DraftComment,
+  type ReviewEvent,
+} from "./review";
 
 export interface PrRef {
   owner: string;
@@ -328,4 +335,78 @@ export async function fetchSides(pr: PrInfo, file: PrFile, fetchFn: FetchLike): 
       : fetchSide(pr, file.filename, pr.headSha, fetchFn),
   ]);
   return { before, after };
+}
+
+/**
+ * Turn a write failure into something the reviewer can act on. A 403 is
+ * almost always a token without Pull requests: write; a 422 is an anchor
+ * GitHub will not take, usually because the pull request moved under you.
+ */
+function writeError(status: number, detail: string): SourceError {
+  if (status === 403 || status === 401)
+    return new SourceError(
+      "http",
+      "GitHub refused the write. A token needs Pull requests: write to leave a review — read-only is enough to read one, but not to send one.",
+    );
+  if (status === 422)
+    return new SourceError(
+      "http",
+      `GitHub would not accept the comment's position${detail ? ` (${detail})` : ""}. The pull request has probably moved since this diff was loaded — reload it and try again.`,
+    );
+  return httpError(status);
+}
+
+async function post(fetchFn: FetchLike, path: string, body: unknown): Promise<unknown> {
+  let res;
+  try {
+    res = await fetchFn(path, { method: "POST", body: JSON.stringify(body) });
+  } catch {
+    throw new SourceError("net", "Could not reach GitHub. Nothing was sent; your draft is intact.");
+  }
+  const text = await res.text();
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const err = JSON.parse(text) as { message?: string; errors?: { message?: string }[] };
+      detail = err.errors?.[0]?.message || err.message || "";
+    } catch {
+      /* a body we cannot read adds nothing to the message */
+    }
+    throw writeError(res.status, detail);
+  }
+  return text ? JSON.parse(text) : null;
+}
+
+/** Send the whole review — every drafted comment, and the verdict. */
+export async function submitReview(
+  ref: PrRef,
+  commitId: string,
+  event: ReviewEvent,
+  summary: string,
+  draft: DraftComment[],
+  fetchFn: FetchLike,
+): Promise<{ id: number; html_url: string }> {
+  const out = await post(
+    fetchFn,
+    `/repos/${ref.owner}/${ref.repo}/pulls/${ref.number}/reviews`,
+    reviewPayload(commitId, event, summary, draft),
+  );
+  return out as { id: number; html_url: string };
+}
+
+/** Send one comment on its own, without opening a review. */
+export async function postComment(
+  ref: PrRef,
+  commitId: string,
+  path: string,
+  anchor: Anchor,
+  body: string,
+  fetchFn: FetchLike,
+): Promise<{ id: number; html_url: string }> {
+  const out = await post(
+    fetchFn,
+    `/repos/${ref.owner}/${ref.repo}/pulls/${ref.number}/comments`,
+    commentPayload(commitId, path, anchor, body),
+  );
+  return out as { id: number; html_url: string };
 }

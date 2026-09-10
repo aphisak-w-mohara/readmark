@@ -44,15 +44,21 @@ const COMMON: Record<string, string> = {
 export function makeGhFetch(auth: Auth, opts: GhOptions = {}): FetchLike {
   const f = opts.fetchFn ?? globalThis.fetch;
   const base = opts.base ?? "/api/gh";
-  return async (path: string, init?: { headers?: Record<string, string> }) => {
+  return async (
+    path: string,
+    init?: { headers?: Record<string, string>; method?: string; body?: string },
+  ) => {
     const headers = { ...COMMON, ...(init?.headers ?? {}) };
+    if (init?.body) headers["Content-Type"] = "application/json";
+    const rest = { method: init?.method, body: init?.body };
     if (auth.mode === "token") {
       const res = await f(API + path, {
+        ...rest,
         headers: { ...headers, Authorization: `Bearer ${auth.token}` },
       });
       return res as unknown as FetchResponse;
     }
-    const res = await f(base + path, { headers, credentials: "same-origin" });
+    const res = await f(base + path, { ...rest, headers, credentials: "same-origin" });
     return res as unknown as FetchResponse;
   };
 }
