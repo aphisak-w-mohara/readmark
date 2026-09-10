@@ -113,8 +113,9 @@
           </li>
           <li><b>Repository access</b> — <i>Only select repositories</i>, then the ones you review.</li>
           <li>
-            <b>Permissions → Repository</b> — set <b>Contents</b> and <b>Pull requests</b> to
-            <b>Read-only</b>. Nothing else is needed.
+            <b>Permissions → Repository</b> — <b>Contents: read-only</b>, and
+            <b>Pull requests: read-only</b> to read a PR or <b>read and write</b> to leave a
+            review on one. Nothing else is needed.
           </li>
           <li>Choose a short expiry, generate it, and paste it above.</li>
         </ol>
@@ -128,7 +129,8 @@
 
       <p class="gh-hint">
         A stored token is readable by any script running on this page, and this reader renders
-        Markdown other people wrote. Keep the scope small and the expiry short.
+        Markdown other people wrote. Keep the scope small and the expiry short — read-only is
+        enough unless you want to leave reviews.
       </p>
     {/if}
 
