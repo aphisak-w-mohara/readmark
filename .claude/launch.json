@@ -2,10 +2,10 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "codex",
-      "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "4599"],
-      "port": 4599
+      "name": "readmark",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "dev"],
+      "port": 5173
     }
   ]
 }

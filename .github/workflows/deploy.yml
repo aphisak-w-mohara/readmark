@@ -33,7 +33,10 @@ jobs:
         run: bun run lint
 
       - name: Test
-        run: bun test src/core
+        run: bun run test
+
+      - name: Typecheck
+        run: bun run check
 
       - name: Build
         run: bun run build

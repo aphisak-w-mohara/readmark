@@ -7,6 +7,7 @@
  */
 import { escapeHtml, escapeAttr, safeUrl } from "./escape";
 import { makeSlugger } from "./slug";
+import { splitBlocks, fenceParts, stripInline, afterText, type Block } from "./blocks";
 
 export interface Heading {
   level: number;
@@ -37,19 +38,6 @@ function emph(s: string): string {
     .replace(/~~([^~]+)~~/g, "<del>$1</del>");
 }
 
-/** Strip inline markdown to plain text (for TOC labels and the title). */
-function stripInline(s: string): string {
-  return s
-    .replace(/`([^`]+)`/g, "$1")
-    .replace(/\*\*([^*]+)\*\*/g, "$1")
-    .replace(/__([^_]+)__/g, "$1")
-    .replace(/\*([^*]+)\*/g, "$1")
-    .replace(/_([^_]+)_/g, "$1")
-    .replace(/~~([^~]+)~~/g, "$1")
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
-    .trim();
-}
-
 // Link reference definitions collected per-document (reset in toHtml).
 let REFS: Record<string, { url: string; title?: string }> = {};
 
@@ -57,15 +45,19 @@ function anchor(text: string, url: string, title?: string): string {
   return `<a href="${escapeAttr(safeUrl(url))}"${title ? ` title="${escapeAttr(title)}"` : ""} target="_blank" rel="noopener">${text}</a>`;
 }
 
+const REF_DEF = /^[ ]{0,3}\[([^\]]+)\]:[ \t]*<?([^\s>]+)>?(?:[ \t]+["'(]([^"')]+)["')])?[ \t]*$/gm;
+
+/** Remove `[label]: url "title"` definitions without recording them. */
+export function stripRefDefs(src: string): string {
+  return src.replace(REF_DEF, "");
+}
+
 /** Pull `[label]: url "title"` definitions out of the source and record them. */
 function extractRefs(src: string): string {
-  return src.replace(
-    /^[ ]{0,3}\[([^\]]+)\]:[ \t]*<?([^\s>]+)>?(?:[ \t]+["'(]([^"')]+)["')])?[ \t]*$/gm,
-    (_m, label: string, url: string, title?: string) => {
-      REFS[label.trim().toLowerCase()] = { url, title };
-      return "";
-    },
-  );
+  return src.replace(REF_DEF, (_m, label: string, url: string, title?: string) => {
+    REFS[label.trim().toLowerCase()] = { url, title };
+    return "";
+  });
 }
 
 function inline(src: string): string {
@@ -235,155 +227,77 @@ interface Ctx {
   headings: Heading[];
 }
 
-function parseBlocks(src: string, ctx: Ctx): string {
-  src = src.replace(/\r\n?/g, "\n").replace(/\t/g, "    ");
-  const lines = src.split("\n");
-  const out: string[] = [];
-  let i = 0;
-  const isBlank = (l: string) => /^\s*$/.test(l);
-  while (i < lines.length) {
-    const line = lines[i];
-    if (isBlank(line)) {
-      i++;
-      continue;
-    }
-    // fenced code
-    const f = line.match(/^(\s*)(`{3,}|~{3,})\s*([\w+#.-]*)/);
-    if (f) {
-      const ch = f[2][0];
-      const len = f[2].length;
-      const lang = f[3] || "";
-      const buf: string[] = [];
-      i++;
-      const close = new RegExp("^\\s*" + (ch === "`" ? "`" : "~") + "{" + len + ",}\\s*$");
-      while (i < lines.length && !close.test(lines[i])) {
-        buf.push(lines[i]);
-        i++;
-      }
-      i++;
-      const fenced = buf.join("\n");
-      if (lang.toLowerCase() === "mermaid") {
+/** Render one already-split block to HTML. */
+function renderBlock(b: Block, ctx: Ctx): string {
+  switch (b.kind) {
+    case "code": {
+      const { lang, body } = fenceParts(b.src);
+      if (lang.toLowerCase() === "mermaid")
         // Placeholder rendered into an SVG diagram by the view layer.
-        out.push(`<div class="mermaid"><pre class="mermaid-src">${escapeHtml(fenced)}</pre></div>`);
-      } else {
-        out.push(renderCode(fenced, lang, ctx.hl));
-      }
-      continue;
+        return `<div class="mermaid"><pre class="mermaid-src">${escapeHtml(body)}</pre></div>`;
+      return renderCode(body, lang, ctx.hl);
     }
-    // ATX heading
-    const h = line.match(/^(#{1,6})\s+(.*?)\s*#*\s*$/);
-    if (h) {
-      const level = h[1].length;
-      const text = stripInline(h[2]);
+    case "heading": {
+      const lines = b.src.split("\n");
+      const atx = lines[0].match(/^(#{1,6})\s+(.*?)\s*#*\s*$/);
+      const level = atx ? atx[1].length : lines[1].trim()[0] === "=" ? 1 : 2;
+      const raw = atx ? atx[2] : lines[0].trim();
+      // The outline reads the after side: deleted runs drop out, inserted
+      // ones stay, so an id is the same whether or not marks are shown.
+      const text = stripInline(afterText(raw));
       const id = ctx.slug(text);
       ctx.headings.push({ level, text, id });
-      out.push(`<h${level} id="${id}">${inline(h[2])}</h${level}>`);
-      i++;
-      continue;
+      return `<h${level} id="${id}">${inline(raw)}</h${level}>`;
     }
-    // setext heading
-    if (
-      i + 1 < lines.length &&
-      /^\s*(=+|-+)\s*$/.test(lines[i + 1]) &&
-      !isBlank(line) &&
-      !/^\s*[-+*]\s/.test(line)
-    ) {
-      const level = lines[i + 1].trim()[0] === "=" ? 1 : 2;
-      const text = stripInline(line.trim());
-      const id = ctx.slug(text);
-      ctx.headings.push({ level, text, id });
-      out.push(`<h${level} id="${id}">${inline(line.trim())}</h${level}>`);
-      i += 2;
-      continue;
-    }
-    // hr
-    if (/^\s*([-*_])\s*(\1\s*){2,}$/.test(line)) {
-      out.push("<hr>");
-      i++;
-      continue;
-    }
-    // blockquote
-    if (/^\s*>/.test(line)) {
-      const buf: string[] = [];
-      while (
-        i < lines.length &&
-        !isBlank(lines[i]) &&
-        !/^\s*(#{1,6}\s|`{3,}|~{3,})/.test(lines[i])
-      ) {
-        buf.push(lines[i].replace(/^\s*>\s?/, ""));
-        i++;
-      }
-      out.push(`<blockquote>${parseBlocks(buf.join("\n"), ctx)}</blockquote>`);
-      continue;
-    }
-    // table
-    if (
-      line.includes("|") &&
-      i + 1 < lines.length &&
-      /^\s*\|?[\s:|-]*-[\s:|-]*\|?\s*$/.test(lines[i + 1]) &&
-      lines[i + 1].includes("-")
-    ) {
-      const header = splitRow(line);
-      const align = splitRow(lines[i + 1]).map((c) => {
+    case "hr":
+      return "<hr>";
+    case "quote":
+      return `<blockquote>${parseBlocks(b.src.replace(/^\s*>\s?/gm, ""), ctx)}</blockquote>`;
+    case "table": {
+      const lines = b.src.split("\n");
+      const header = splitRow(lines[0]);
+      const align = splitRow(lines[1]).map((c) => {
         c = c.trim();
         const l = c.startsWith(":");
         const r = c.endsWith(":");
         return r && l ? "center" : r ? "right" : l ? "left" : "";
       });
-      i += 2;
-      const rows: string[][] = [];
-      while (i < lines.length && lines[i].includes("|") && !isBlank(lines[i])) {
-        rows.push(splitRow(lines[i]));
-        i++;
-      }
-      out.push(renderTable(header, align, rows));
-      continue;
+      return renderTable(header, align, lines.slice(2).map(splitRow));
     }
-    // list
-    if (/^(\s*)([-+*]|\d+[.)])\s+/.test(line)) {
-      const buf: string[] = [];
-      while (i < lines.length) {
-        if (/^(\s*)([-+*]|\d+[.)])\s+/.test(lines[i]) || /^\s+\S/.test(lines[i])) {
-          buf.push(lines[i]);
-          i++;
-        } else if (
-          isBlank(lines[i]) &&
-          i + 1 < lines.length &&
-          (/^(\s*)([-+*]|\d+[.)])\s+/.test(lines[i + 1]) || /^\s{2,}\S/.test(lines[i + 1]))
-        ) {
-          i++;
-        } else break;
-      }
-      out.push(renderList(buf));
-      continue;
-    }
-    // raw HTML block (e.g. <details>/<summary>): pass through verbatim until a
-    // blank line, so markdown between the tags still renders. Sanitized by the
-    // view layer. Autolink-only lines (<https://…>) fall through to a paragraph.
-    if (/^\s*<(\/?[a-zA-Z][\w-]*|!--)/.test(line) && !/^\s*<https?:/i.test(line)) {
-      const buf: string[] = [];
-      while (i < lines.length && !isBlank(lines[i])) {
-        buf.push(lines[i]);
-        i++;
-      }
-      out.push(buf.join("\n"));
-      continue;
-    }
-    // paragraph
-    const buf: string[] = [];
-    while (
-      i < lines.length &&
-      !isBlank(lines[i]) &&
-      !/^\s*(#{1,6}\s|>|`{3,}|~{3,}|([-*_])\s*\2\s*\2)/.test(lines[i]) &&
-      !/^(\s*)([-+*]|\d+[.)])\s+/.test(lines[i]) &&
-      !/^\s*<(\/?[a-zA-Z][\w-]*|!--)/.test(lines[i])
-    ) {
-      buf.push(lines[i]);
-      i++;
-    }
-    out.push(`<p>${inline(buf.join("\n"))}</p>`);
+    case "list":
+      return renderList(b.src.split("\n"));
+    case "html":
+      return b.src;
+    default:
+      return `<p>${inline(b.src)}</p>`;
   }
-  return out.join("\n");
+}
+
+function parseBlocks(src: string, ctx: Ctx): string {
+  return splitBlocks(src)
+    .map((b) => renderBlock(b, ctx))
+    .join("\n");
+}
+
+/**
+ * Render a list of block sources one at a time, sharing a single slugger and
+ * one set of link definitions. The differ needs each block's HTML separately
+ * so it can lay them out in rows; `toHtml` only ever hands back one string.
+ */
+export function renderBlockList(
+  srcs: string[],
+  opts: MarkdownOptions & { refsFrom?: string } = {},
+): { html: string[]; headings: Heading[] } {
+  const hl = opts.highlight ?? ((c: string) => escapeHtml(c));
+  REFS = {};
+  if (opts.refsFrom !== undefined) extractRefs(opts.refsFrom);
+  const ctx: Ctx = { hl, slug: makeSlugger(), headings: [] };
+  const html = srcs.map((s) =>
+    splitBlocks(s)
+      .map((b) => renderBlock(b, ctx))
+      .join("\n"),
+  );
+  return { html, headings: ctx.headings };
 }
 
 /** Render Markdown to HTML plus the outline and title derived during the parse. */

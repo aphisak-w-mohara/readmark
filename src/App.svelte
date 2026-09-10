@@ -9,6 +9,11 @@
   import StatusBar from "./components/StatusBar.svelte";
   import AaPanel from "./components/AaPanel.svelte";
   import SourceModal from "./components/SourceModal.svelte";
+  import PrBar from "./components/PrBar.svelte";
+  import DiffView from "./components/DiffView.svelte";
+  import CommitPicker from "./components/CommitPicker.svelte";
+  import type { PrFile } from "./core/pr";
+  import type { Scope } from "./state.svelte";
 
   let stageEl = $state<HTMLElement>();
   let articleEl = $state<HTMLElement>();
@@ -19,11 +24,21 @@
 
   let aaOpen = $state(false);
   let sourceOpen = $state(false);
+  let commitsOpen = $state(false);
 
   const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   // opening document
   store.load(SAMPLE);
+
+  // Does this origin have a sign-in backend? A static build does not.
+  store.checkSession();
+
+
+
+
+
+  let changeIndex = $state(0);
 
   // outline + scrollspy track headings down to level 4 (matches the CSS depth)
   const outline = $derived(store.doc.headings.filter((h: Heading) => h.level <= 4));
@@ -160,6 +175,27 @@
     applyScroll();
   }
 
+  /** Anchors for the change-to-change jump: every row that is not untouched. */
+  function changeEls(): HTMLElement[] {
+    if (!articleEl) return [];
+    return [
+      ...articleEl.querySelectorAll<HTMLElement>(
+        '.diff-row:not([data-op="same"]), .diff-side[data-op="changed"], .diff-side[data-op="added"], .diff-side[data-op="removed"]',
+      ),
+    ].filter((el, i, all) => i === 0 || el !== all[i - 1]);
+  }
+
+  function stepChange(delta: number) {
+    const els = changeEls();
+    if (!els.length || !stageEl) return;
+    const next = (changeIndex + delta + els.length) % els.length;
+    changeIndex = next;
+    stageEl.scrollTo({
+      top: els[next].offsetTop - 80,
+      behavior: reduceMotion ? "auto" : "smooth",
+    });
+  }
+
   function jump(id: string) {
     const el = document.getElementById(id);
     if (!el || !stageEl) return;
@@ -206,11 +242,51 @@
   function closePanels() {
     aaOpen = false;
     sourceOpen = false;
+    commitsOpen = false;
   }
   function onKey(e: KeyboardEvent) {
-    if (e.key !== "Escape") return;
-    if (aaOpen || sourceOpen) closePanels();
-    else if (store.zen) toggleZen();
+    if (e.key === "Escape") {
+      if (aaOpen || sourceOpen || commitsOpen) closePanels();
+      else if (store.zen) toggleZen();
+      return;
+    }
+    // j/k step between changes, but never while something is being typed into.
+    if (store.mode !== "diff" || aaOpen || sourceOpen || commitsOpen) return;
+    const t = e.target as HTMLElement | null;
+    if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
+    if (e.key === "j") stepChange(1);
+    else if (e.key === "k") stepChange(-1);
+  }
+
+  // Nothing to step between when every block is a change: a wholly new or
+  // deleted file is read straight through.
+  const changeCount = $derived(
+    store.diff && !store.diff.whole ? store.diff.rows.filter((r) => r.op !== "same").length : 0,
+  );
+
+  // How many commits the current range covers; 0 means the whole PR.
+  const rangeCount = $derived.by(() => {
+    const r = store.range;
+    if (!r) return 0;
+    const a = store.commits.findIndex((c) => c.sha === r.fromSha);
+    const b = store.commits.findIndex((c) => c.sha === r.toSha);
+    return a >= 0 && b >= 0 ? b - a + 1 : 0;
+  });
+
+  async function pickFile(f: PrFile) {
+    changeIndex = 0;
+    await store.openFile(f);
+  }
+
+  // Collapsing the untouched blocks moves everything; start from the top
+  // rather than leaving the reader parked wherever the old offset landed.
+  function setScope(s: Scope) {
+    if (s === store.scope) return;
+    store.scope = s;
+    changeIndex = 0;
+    queueMicrotask(() => {
+      if (stageEl) stageEl.scrollTop = 0;
+    });
   }
 </script>
 
@@ -227,6 +303,13 @@
 
   <TopBar
     title={store.doc.title}
+    pr={store.mode === "diff" && store.pr
+      ? {
+          label: `${store.pr.owner}/${store.pr.repo}#${store.pr.number}`,
+          subject: store.pr.title,
+          url: store.pr.url,
+        }
+      : null}
     outlineOpen={store.outlineOpen}
     zen={store.zen}
     onSource={() => (sourceOpen = true)}
@@ -235,12 +318,43 @@
     onToggleZen={toggleZen}
   />
 
+  {#if store.mode === "diff" && store.pr && store.files}
+    <PrBar
+      files={store.files}
+      active={store.activeFile}
+      layout={store.layout}
+      scope={store.scope}
+      busy={store.busy}
+      comparable={!store.diff?.whole}
+      {changeIndex}
+      {changeCount}
+      commitCount={store.commits.length}
+      rangeCount={rangeCount}
+      onCommits={() => (commitsOpen = true)}
+      onFile={pickFile}
+      onLayout={(l) => (store.layout = l)}
+      onScope={setScope}
+      onStep={stepChange}
+      onExit={() => store.load(SAMPLE)}
+    />
+  {/if}
+
   <div id="body">
     <Outline headings={outline} {activeId} onJump={jump} />
     <main id="stage" bind:this={stageEl} onscroll={onScroll}>
       <div class="page-wrap">
-        <article id="page" class="md" class:focusing={store.zen} bind:this={articleEl}>
-          {@html store.doc.html}
+        <article
+          id="page"
+          class="md"
+          class:focusing={store.zen}
+          class:diffing={store.mode === "diff"}
+          bind:this={articleEl}
+        >
+          {#if store.mode === "diff" && store.diff}
+            <DiffView diff={store.diff} layout={store.layout} scope={store.scope} />
+          {:else}
+            {@html store.doc.html}
+          {/if}
         </article>
       </div>
     </main>
@@ -249,9 +363,31 @@
   <StatusBar title={store.doc.title} {words} {minutes} pct={Math.round(progress)} />
 
   <AaPanel open={aaOpen} />
-  <SourceModal open={sourceOpen} onClose={() => (sourceOpen = false)} onRender={(md) => store.load(md)} />
+  <SourceModal
+    open={sourceOpen}
+    onClose={() => (sourceOpen = false)}
+    onRender={(md) => store.load(md)}
+    onPr={(url) => store.openPr(url)}
+    available={store.session.available}
+    signedIn={store.session.signedIn}
+    token={store.token}
+    onToken={(t, r) => store.setToken(t, r)}
+    onForget={() => store.forgetToken()}
+  />
 
-  <div id="scrim" class:show={aaOpen || sourceOpen} onclick={closePanels} role="presentation"></div>
+  <CommitPicker
+    open={commitsOpen}
+    commits={store.commits}
+    range={store.range}
+    lastReviewSha={store.lastReviewSha}
+    onClose={() => (commitsOpen = false)}
+    onApply={(r) => {
+      changeIndex = 0;
+      store.setRange(r);
+    }}
+  />
+
+  <div id="scrim" class:show={aaOpen || sourceOpen || commitsOpen} onclick={closePanels} role="presentation"></div>
 
   {#if store.zen}
     <button id="zenexit" class:peek onclick={toggleZen} title="Exit Zen (Esc)" aria-label="Exit Zen mode">

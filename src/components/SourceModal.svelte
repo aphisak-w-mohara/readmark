@@ -1,16 +1,37 @@
 <script lang="ts">
   import { fetchMarkdown, type SourceError } from "../core/source";
+  import { resolvePR } from "../core/pr";
+  import AuthPanel from "./AuthPanel.svelte";
 
   interface Props {
     open: boolean;
     onClose: () => void;
     onRender: (markdown: string) => void;
+    /** Load a pull request; throws a SourceError the modal renders. */
+    onPr: (url: string) => Promise<void>;
+    available: boolean;
+    signedIn: boolean;
+    token: string | null;
+    onToken: (token: string, remember: boolean) => void;
+    onForget: () => void;
   }
-  let { open, onClose, onRender }: Props = $props();
+  let {
+    open,
+    onClose,
+    onRender,
+    onPr,
+    available,
+    signedIn,
+    token,
+    onToken,
+    onForget,
+  }: Props = $props();
 
-  let tab = $state<"paste" | "github">("paste");
+  let tab = $state<"paste" | "github" | "pr">("paste");
   let mdText = $state("");
   let ghUrl = $state("");
+  let prUrl = $state("");
+  const authed = $derived(signedIn || Boolean(token));
   let note = $state<{ kind: "err" | "info"; msg: string } | null>(null);
   let busy = $state(false);
 
@@ -26,6 +47,27 @@
       if (!mdText.trim()) return;
       onRender(mdText);
       onClose();
+      return;
+    }
+    if (tab === "pr") {
+      if (!resolvePR(prUrl)) {
+        note = { kind: "err", msg: "Paste a link like https://github.com/owner/repo/pull/123." };
+        return;
+      }
+      if (!authed) {
+        note = { kind: "err", msg: "Sign in or add a token first." };
+        return;
+      }
+      busy = true;
+      try {
+        await onPr(prUrl);
+        onClose();
+      } catch (e) {
+        const err = e as SourceError;
+        note = { kind: err.kind === "net" ? "info" : "err", msg: err.message };
+      } finally {
+        busy = false;
+      }
       return;
     }
     if (!ghUrl.trim()) {
@@ -51,6 +93,21 @@
   function ghKey(e: KeyboardEvent) {
     if (e.key === "Enter") go();
   }
+
+  // Clear a credentials complaint the moment credentials arrive.
+  $effect(() => {
+    if (authed && note?.kind === "err") note = null;
+  });
+
+  // A pull request pasted into the plain GitHub box is a common slip; move it
+  // rather than fetching a branch path that does not exist.
+  $effect(() => {
+    if (tab === "github" && resolvePR(ghUrl)) {
+      prUrl = ghUrl.trim();
+      ghUrl = "";
+      tab = "pr";
+    }
+  });
 </script>
 
 <div class="panel" id="sourcePanel" class:show={open} role="dialog" aria-label="Load document">
@@ -61,6 +118,9 @@
       </button>
       <button class="src-tab" class:sel={tab === "github"} onclick={() => (tab = "github")}>
         <svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.45-1.16-1.11-1.47-1.11-1.47-.9-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.89 1.52 2.34 1.08 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.99 1.03-2.69-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.5 9.5 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.6 1.03 2.69 0 3.84-2.34 4.68-4.57 4.93.36.31.68.92.68 1.85v2.74c0 .27.18.58.69.48A10 10 0 0 0 12 2Z" /></svg>GitHub URL
+      </button>
+      <button class="src-tab" class:sel={tab === "pr"} onclick={() => (tab = "pr")}>
+        <svg viewBox="0 0 24 24"><path d="M6 3v12M6 21a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM6 7a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM18 21a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM18 17V9a3 3 0 0 0-3-3h-3m0 0 2.5-2.5M12 6l2.5 2.5" /></svg>Pull request
       </button>
     </div>
     <button class="src-close" onclick={onClose} aria-label="Close">
@@ -73,7 +133,7 @@
       <div class="src-pane show">
         <textarea id="mdInput" bind:value={mdText} onkeydown={pasteKey} placeholder="# Paste your Markdown here&#10;&#10;It renders the moment you press Render Document."></textarea>
       </div>
-    {:else}
+    {:else if tab === "github"}
       <div class="src-pane show">
         <div class="gh-row">
           <input id="ghUrl" type="text" bind:value={ghUrl} onkeydown={ghKey} placeholder="https://github.com/owner/repo  ·  or a link to any .md file" />
@@ -90,6 +150,26 @@
           <div class="note {note.kind}">{note.msg}</div>
         {/if}
       </div>
+    {:else}
+      <div class="src-pane show">
+        <div class="gh-row">
+          <input
+            id="prUrl"
+            type="text"
+            bind:value={prUrl}
+            onkeydown={ghKey}
+            placeholder="https://github.com/owner/repo/pull/123"
+          />
+        </div>
+        <p class="gh-hint">
+          Read the Markdown a pull request changes, rendered — rewrapped paragraphs stay quiet, so
+          only the words that actually changed stand out.
+        </p>
+        <AuthPanel {available} {signedIn} {token} {onToken} {onForget} />
+        {#if note}
+          <div class="note {note.kind}">{note.msg}</div>
+        {/if}
+      </div>
     {/if}
   </div>
 
@@ -97,7 +177,7 @@
     <button class="btn btn-ghost" onclick={onClose}>Cancel</button>
     <span class="spacer"></span>
     <button class="btn btn-primary" onclick={go} disabled={busy}>
-      {#if busy}<span class="spin"></span>Fetching{:else}Render Document{/if}
+      {#if busy}<span class="spin"></span>Fetching{:else if tab === "pr"}Review diff{:else}Render Document{/if}
     </button>
   </div>
 </div>

@@ -67,6 +67,11 @@ textarea {
 
 /* ---- reading themes: paper + ink + code tokens live on #app ---- */
 #app[data-theme="original"] {
+  --ins-bg: rgba(99, 153, 34, 0.16);
+  --ins-ink: #2f5410;
+  --del-bg: rgba(226, 75, 74, 0.14);
+  --del-ink: #7d2422;
+  --chg-edge: #b08a2e;
   --paper: #fcfcf9;
   --mat: #e4e3dc;
   --ink: #23262b;
@@ -85,6 +90,11 @@ textarea {
   --t-punct: #8b8f97;
 }
 #app[data-theme="quiet"] {
+  --ins-bg: rgba(90, 140, 30, 0.18);
+  --ins-ink: #2c4f10;
+  --del-bg: rgba(210, 70, 70, 0.16);
+  --del-ink: #77201f;
+  --chg-edge: #a5822c;
   --paper: #e9e9e3;
   --mat: #d3d3cb;
   --ink: #31343a;
@@ -103,6 +113,11 @@ textarea {
   --t-punct: #7d818a;
 }
 #app[data-theme="sepia"] {
+  --ins-bg: rgba(105, 130, 45, 0.22);
+  --ins-ink: #3e4d15;
+  --del-bg: rgba(190, 70, 45, 0.18);
+  --del-ink: #7a2a17;
+  --chg-edge: #a4762a;
   --paper: #f2e7d0;
   --mat: #d9cbab;
   --ink: #463a28;
@@ -121,6 +136,11 @@ textarea {
   --t-punct: #8b7a5c;
 }
 #app[data-theme="night"] {
+  --ins-bg: rgba(126, 176, 74, 0.2);
+  --ins-ink: #b9d79a;
+  --del-bg: rgba(224, 104, 100, 0.18);
+  --del-ink: #e8a9a6;
+  --chg-edge: #c9a25a;
   --paper: #23262c;
   --mat: #15171b;
   --ink: #c7cad0;
@@ -139,6 +159,11 @@ textarea {
   --t-punct: #868b93;
 }
 #app[data-theme="black"] {
+  --ins-bg: rgba(120, 170, 70, 0.18);
+  --ins-ink: #a9cb8b;
+  --del-bg: rgba(216, 96, 92, 0.16);
+  --del-ink: #dc9d9a;
+  --chg-edge: #c49a4c;
   --paper: #0f1115;
   --mat: #000;
   --ink: #b6bac1;
@@ -410,6 +435,7 @@ textarea {
 }
 
 #stage {
+  container: stage / inline-size;
   flex: 1 1 auto;
   overflow-y: auto;
   background: var(--mat);
@@ -1234,7 +1260,9 @@ textarea {
   display: flex;
   gap: 10px;
 }
-#ghUrl {
+#ghUrl,
+#prUrl,
+.auth-token input {
   flex: 1;
   height: 46px;
   background: var(--g850);
@@ -1246,10 +1274,14 @@ textarea {
   outline: none;
   transition: border-color 0.15s;
 }
-#ghUrl:focus {
+#ghUrl:focus,
+#prUrl:focus,
+.auth-token input:focus {
   border-color: var(--brass);
 }
-#ghUrl::placeholder {
+#ghUrl::placeholder,
+#prUrl::placeholder,
+.auth-token input::placeholder {
   color: var(--mist-3);
 }
 .gh-hint {
@@ -1384,4 +1416,656 @@ textarea {
   .bar-center {
     display: none;
   }
+}
+
+/* ============================================================
+   PR diff review
+   ============================================================ */
+
+#prbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 10px 0 14px;
+  background: var(--g850);
+  border-bottom: 1px solid var(--line);
+  font-family: var(--ui);
+}
+.pr-spacer {
+  flex: 1 1 auto;
+}
+.pr-note {
+  font-size: 11.5px;
+  color: var(--mist-3);
+  white-space: nowrap;
+}
+
+/* The file picker keeps a real <select> underneath — keyboard and touch
+   behaviour for free — with the chrome's own skin painted over it. */
+.pr-file {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+}
+.pr-file select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  font: inherit;
+}
+.pr-file select:disabled {
+  cursor: default;
+}
+.pr-file-face {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 26px;
+  max-width: 42ch;
+  padding: 0 8px 0 10px;
+  border-radius: 8px;
+  background: var(--g800);
+  box-shadow: inset 0 0 0 1px var(--line);
+  color: var(--mist);
+  font-size: 12px;
+  transition:
+    background 0.15s,
+    box-shadow 0.15s;
+}
+.pr-file:hover .pr-file-face,
+.pr-file select:focus-visible + .pr-file-face {
+  background: var(--g700);
+  box-shadow: inset 0 0 0 1px var(--g600);
+}
+.pr-file.busy .pr-file-face {
+  opacity: 0.55;
+}
+.pr-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pr-file-face svg {
+  width: 13px;
+  height: 13px;
+  stroke: var(--mist-3);
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex: none;
+}
+.pr-add {
+  color: #97c459;
+  font-variant-numeric: tabular-nums;
+}
+.pr-del {
+  color: #e2938f;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Segmented toggles borrow the top bar's idiom: no borders, a filled pill
+   for the live one, brass kept for the Open button alone. */
+.pr-seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 9px;
+  background: var(--g900);
+}
+.pr-seg button,
+.pr-nav button,
+.pr-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 7px;
+  color: var(--mist-2);
+  transition:
+    background 0.13s,
+    color 0.13s;
+}
+.pr-seg button svg,
+.pr-nav button svg,
+.pr-close svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.pr-seg button:hover,
+.pr-nav button:hover:not(:disabled),
+.pr-close:hover {
+  color: var(--mist);
+}
+.pr-seg button.sel {
+  background: var(--g700);
+  color: var(--mist);
+}
+.pr-seg.off {
+  opacity: 0.4;
+}
+.pr-seg button:disabled {
+  cursor: default;
+}
+.pr-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.pr-nav button {
+  padding: 0 5px;
+}
+.pr-nav button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.pr-count {
+  min-width: 5ch;
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--mist-3);
+  font-variant-numeric: tabular-nums;
+}
+.pr-close {
+  margin-left: 2px;
+}
+
+.pr-commits {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 8px 0 10px;
+  border-radius: 8px;
+  color: var(--mist-2);
+  font-size: 12px;
+  white-space: nowrap;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    box-shadow 0.15s;
+}
+.pr-commits:hover {
+  background: var(--g700);
+  color: var(--mist);
+}
+/* A narrowed range is a state you must not forget you are in. */
+.pr-commits.ranged {
+  color: var(--brass-hi);
+  background: var(--brass-soft);
+  box-shadow: inset 0 0 0 1px rgba(201, 155, 69, 0.25);
+}
+.pr-commits svg {
+  width: 13px;
+  height: 13px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ---- the commit range picker ---- */
+
+#commitPanel {
+  top: 50%;
+  left: 50%;
+  width: min(520px, calc(100vw - 32px));
+  max-height: min(620px, calc(100vh - 80px));
+  display: flex;
+  flex-direction: column;
+  border-radius: 14px;
+  transform: translate(-50%, -46%) scale(0.985);
+  transform-origin: center;
+}
+#commitPanel.show {
+  transform: translate(-50%, -50%) scale(1);
+}
+.cm-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 13px 14px 13px 18px;
+  border-bottom: 1px solid var(--g600);
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--mist);
+}
+.cm-top {
+  padding: 6px;
+}
+.cm-opt,
+.cm-row {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 9px 11px;
+  border-radius: 9px;
+  text-align: left;
+  color: var(--mist);
+  transition: background 0.12s;
+}
+.cm-opt:hover:not(.disabled),
+.cm-row:hover {
+  background: var(--g700);
+}
+.cm-opt.sel {
+  background: var(--g700);
+}
+.cm-opt.disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.cm-tick {
+  width: 15px;
+  flex: none;
+  color: var(--brass-hi);
+  font-size: 13px;
+  line-height: 1.35;
+}
+.cm-msg {
+  display: block;
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+.cm-meta {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--mist-3);
+}
+.cm-divide {
+  padding: 7px 18px;
+  background: var(--g900);
+  border-top: 1px solid var(--g600);
+  border-bottom: 1px solid var(--g600);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--mist-3);
+}
+.cm-list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(128, 128, 128, 0.35) transparent;
+}
+.cm-body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.cm-box {
+  width: 14px;
+  height: 14px;
+  margin-top: 2px;
+  flex: none;
+  border-radius: 4px;
+  border: 1px solid var(--g600);
+  transition:
+    background 0.12s,
+    border-color 0.12s;
+}
+.cm-box.on {
+  background: var(--brass);
+  border-color: var(--brass);
+  box-shadow: inset 0 0 0 2px var(--g800);
+}
+.cm-row.sel {
+  background: rgba(201, 155, 69, 0.09);
+}
+/* The ends of the range are what you drag; mark them, not every row. */
+.cm-row.edge {
+  box-shadow: inset 2px 0 0 var(--brass);
+}
+.cm-sha {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--mist-3);
+  padding-top: 1px;
+}
+.cm-foot {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 11px 14px;
+  border-top: 1px solid var(--g600);
+}
+.cm-count {
+  margin-right: auto;
+  font-size: 11.5px;
+  color: var(--mist-3);
+}
+
+/* The PR identity rides in the title slot, where the document name lives. */
+#docTitle .pr-id {
+  color: var(--mist-3);
+  margin-right: 8px;
+}
+a#docTitle {
+  text-decoration: none;
+}
+a#docTitle:hover .pr-subject {
+  text-decoration: underline;
+}
+
+/* ---- the marks themselves ---- */
+
+.md ins.diff-ins,
+.md del.diff-del {
+  border-radius: 3px;
+  padding: 0 0.12em;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.md ins.diff-ins {
+  background: var(--ins-bg);
+  color: var(--ins-ink);
+  text-decoration: none;
+}
+.md del.diff-del {
+  background: var(--del-bg);
+  color: var(--del-ink);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+
+/* One statement of fact, instead of a wash over every block. */
+.diff-banner {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 0 1.4em;
+  padding: 8px 13px;
+  border-radius: 9px;
+  border-left: 3px solid var(--chg-edge);
+  background: var(--mat);
+  color: var(--ink-2);
+  font-family: var(--ui);
+  font-size: 12.5px;
+}
+.diff-banner[data-whole="added"] {
+  border-left-color: var(--ins-ink);
+}
+.diff-banner[data-whole="removed"] {
+  border-left-color: var(--del-ink);
+}
+
+/* ---- rows ---- */
+
+.diff-row > :first-child {
+  margin-top: 0;
+}
+.diff-row > :last-child {
+  margin-bottom: 0;
+}
+.diff-row[data-op="added"],
+.diff-row[data-op="removed"],
+.diff-row[data-op="changed"]:not([data-marked="true"]) {
+  border-left: 3px solid var(--chg-edge);
+  border-radius: 0;
+  padding: 2px 0 2px 13px;
+  margin-left: -16px;
+}
+.diff-row[data-op="added"] {
+  border-left-color: var(--ins-ink);
+  background: var(--ins-bg);
+}
+.diff-row[data-op="removed"] {
+  border-left-color: var(--del-ink);
+  background: var(--del-bg);
+}
+.diff-row[data-op="removed"] > * {
+  opacity: 0.72;
+}
+
+.diff-fold {
+  display: block;
+  width: 100%;
+  margin: 1.1em 0;
+  padding: 5px 10px;
+  font: inherit;
+  font-family: var(--ui);
+  font-size: 12.5px;
+  color: var(--ink-2);
+  background: transparent;
+  border: 1px dashed var(--rule);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.diff-fold:hover {
+  color: var(--ink);
+  border-style: solid;
+}
+
+/* ---- split ---- */
+
+.diff-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  column-gap: 22px;
+}
+.diff-col-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 4px 0 5px;
+  margin-bottom: 6px;
+  background: var(--paper);
+  border-bottom: 1px solid var(--rule);
+  font-family: var(--ui);
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+.diff-side {
+  min-width: 0;
+  padding: 2px 0;
+}
+.diff-side > :first-child {
+  margin-top: 0;
+}
+.diff-side[data-op="added"] {
+  background: var(--ins-bg);
+}
+.diff-side[data-op="removed"] {
+  background: var(--del-bg);
+}
+.diff-side[data-op="changed"] {
+  box-shadow: inset 3px 0 0 var(--chg-edge);
+  padding-left: 10px;
+}
+.diff-absent {
+  color: var(--ink-2);
+  opacity: 0.5;
+}
+/* Spans whatever tracks exist: a hard 1/3 would conjure a second column
+   back into being when the narrow layout has collapsed to one. */
+.diff-fold.span {
+  grid-column: 1 / -1;
+}
+
+/* A split diff needs the full stage, not a single reading measure. */
+#page.diffing:has(.diff-split) {
+  max-width: none;
+}
+
+/* Two columns need room the window alone doesn't measure — the outline rail
+   eats into it. Query the stage, so opening the rail can collapse the split. */
+@container stage (max-width: 700px) {
+  .diff-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .diff-col-head {
+    display: none;
+  }
+  .diff-side::before {
+    display: block;
+    margin-bottom: 3px;
+    font-family: var(--ui);
+    font-size: 10.5px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+  }
+  .diff-side.is-before::before {
+    content: "Before";
+  }
+  .diff-side.is-after::before {
+    content: "After";
+    margin-top: 4px;
+  }
+  .diff-side.is-before {
+    border-bottom: 1px dashed var(--rule);
+    padding-bottom: 8px;
+  }
+  /* Stacked, an empty side is just a labelled dash taking up a screen. */
+  .diff-side[data-op="absent"] {
+    display: none;
+  }
+}
+
+/* ---- auth panel in the Open modal ---- */
+
+.auth-panel,
+.auth-state {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--rule);
+  font-size: 13px;
+}
+.auth-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.auth-state .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ins-ink);
+}
+.auth-link {
+  font: inherit;
+  color: var(--link);
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.auth-signin {
+  display: inline-block;
+  text-decoration: none;
+}
+.auth-toggle {
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--link);
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.auth-token {
+  display: flex;
+  gap: 8px;
+  margin: 10px 0 8px;
+}
+.auth-token input {
+  flex: 1;
+  min-width: 0;
+}
+.auth-remember {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+.auth-warn {
+  margin: 8px 2px 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--mist-2);
+  border-left: 2px solid var(--brass);
+  padding-left: 9px;
+}
+.auth-help {
+  margin: 12px 0 4px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--mist-2);
+}
+.auth-help summary {
+  cursor: pointer;
+  color: var(--brass);
+  list-style: none;
+}
+.auth-help summary::-webkit-details-marker {
+  display: none;
+}
+/* Drawn, not a glyph: the UI stack has no triangle and renders a dot. */
+.auth-help summary::before {
+  content: "";
+  display: inline-block;
+  width: 0;
+  height: 0;
+  margin-right: 7px;
+  vertical-align: 1px;
+  border-left: 5px solid currentColor;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  transition: transform 0.12s;
+}
+.auth-help[open] summary::before {
+  transform: rotate(90deg);
+}
+.auth-help ol {
+  margin: 9px 0 0;
+  padding-left: 18px;
+}
+.auth-help li {
+  margin: 0 0 5px;
+}
+.auth-help li b {
+  color: var(--mist);
+  font-weight: 600;
+}
+.auth-help p {
+  margin: 9px 0 0;
+}
+.auth-help code {
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--g850);
+  font-family: var(--mono);
+  font-size: 11.5px;
+}
+.auth-help a {
+  color: var(--brass);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
