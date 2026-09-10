@@ -33,6 +33,7 @@
   store.checkSession();
 
 
+
   let changeIndex = $state(0);
 
   // outline + scrollspy track headings down to level 4 (matches the CSS depth)
@@ -286,6 +287,13 @@
 
   <TopBar
     title={store.doc.title}
+    pr={store.mode === "diff" && store.pr
+      ? {
+          label: `${store.pr.owner}/${store.pr.repo}#${store.pr.number}`,
+          subject: store.pr.title,
+          url: store.pr.url,
+        }
+      : null}
     outlineOpen={store.outlineOpen}
     zen={store.zen}
     onSource={() => (sourceOpen = true)}
@@ -296,10 +304,8 @@
 
   {#if store.mode === "diff" && store.pr && store.files}
     <PrBar
-      pr={store.pr}
       files={store.files}
       active={store.activeFile}
-      diff={store.diff}
       layout={store.layout}
       scope={store.scope}
       busy={store.busy}

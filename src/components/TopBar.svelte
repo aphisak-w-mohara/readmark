@@ -1,6 +1,8 @@
 <script lang="ts">
   interface Props {
     title: string;
+    /** In diff review the title slot names the pull request instead. */
+    pr?: { label: string; subject: string; url: string } | null;
     outlineOpen: boolean;
     zen: boolean;
     onSource: () => void;
@@ -8,12 +10,29 @@
     onAa: () => void;
     onToggleZen: () => void;
   }
-  let { title, outlineOpen, zen, onSource, onToggleOutline, onAa, onToggleZen }: Props = $props();
+  let {
+    title,
+    pr = null,
+    outlineOpen,
+    zen,
+    onSource,
+    onToggleOutline,
+    onAa,
+    onToggleZen,
+  }: Props = $props();
 </script>
 
 <header id="bar">
   <div class="brand"><span class="mark">R</span><span class="name">Readmark</span></div>
-  <div class="bar-center"><span id="docTitle">{title}</span></div>
+  <div class="bar-center">
+    {#if pr}
+      <a id="docTitle" href={pr.url} target="_blank" rel="noopener" title={pr.subject}>
+        <span class="pr-id">{pr.label}</span><span class="pr-subject">{pr.subject}</span>
+      </a>
+    {:else}
+      <span id="docTitle">{title}</span>
+    {/if}
+  </div>
   <div class="bar-tools">
     <button class="tool primary" onclick={onSource} title="Open Markdown — paste or a GitHub URL">
       <svg viewBox="0 0 24 24"><path d="M3 8a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8Z" /></svg><span>Open</span>

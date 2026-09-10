@@ -1423,124 +1423,168 @@ textarea {
    ============================================================ */
 
 #prbar {
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  padding: 9px 16px 10px;
-  background: var(--mat);
-  border-bottom: 1px solid var(--rule);
-  color: var(--ink);
-  font-size: 12.5px;
-}
-.pr-line {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-.pr-title {
-  display: flex;
-  align-items: baseline;
   gap: 8px;
-  min-width: 0;
-  color: inherit;
-  text-decoration: none;
+  height: 34px;
+  padding: 0 10px 0 14px;
+  background: var(--g850);
+  border-bottom: 1px solid var(--line);
+  font-family: var(--ui);
 }
-.pr-title:hover .pr-name {
-  text-decoration: underline;
+.pr-spacer {
+  flex: 1 1 auto;
 }
-.pr-num {
-  color: var(--ink-2);
-  font-variant-numeric: tabular-nums;
+.pr-note {
+  font-size: 11.5px;
+  color: var(--mist-3);
   white-space: nowrap;
 }
-.pr-name {
-  font-weight: 550;
+
+/* The file picker keeps a real <select> underneath — keyboard and touch
+   behaviour for free — with the chrome's own skin painted over it. */
+.pr-file {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+}
+.pr-file select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  font: inherit;
+}
+.pr-file select:disabled {
+  cursor: default;
+}
+.pr-file-face {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 26px;
+  max-width: 42ch;
+  padding: 0 8px 0 10px;
+  border-radius: 8px;
+  background: var(--g800);
+  box-shadow: inset 0 0 0 1px var(--line);
+  color: var(--mist);
+  font-size: 12px;
+  transition:
+    background 0.15s,
+    box-shadow 0.15s;
+}
+.pr-file:hover .pr-file-face,
+.pr-file select:focus-visible + .pr-file-face {
+  background: var(--g700);
+  box-shadow: inset 0 0 0 1px var(--g600);
+}
+.pr-file.busy .pr-file-face {
+  opacity: 0.55;
+}
+.pr-file-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.pr-exit,
-.pr-nav button,
-.pr-seg button {
-  font: inherit;
-  color: var(--ink-2);
-  background: transparent;
-  border: 1px solid var(--rule);
-  border-radius: 7px;
-  padding: 3px 9px;
-  cursor: pointer;
+.pr-file-face svg {
+  width: 13px;
+  height: 13px;
+  stroke: var(--mist-3);
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex: none;
 }
-.pr-exit:hover,
-.pr-nav button:hover:not(:disabled),
-.pr-seg button:hover {
-  color: var(--ink);
+.pr-add {
+  color: #97c459;
+  font-variant-numeric: tabular-nums;
 }
-.pr-files select {
-  font: inherit;
-  max-width: 46ch;
-  color: var(--ink);
-  background: var(--paper);
-  border: 1px solid var(--rule);
-  border-radius: 7px;
-  padding: 3px 8px;
+.pr-del {
+  color: #e2938f;
+  font-variant-numeric: tabular-nums;
 }
-.pr-other {
-  color: var(--ink-2);
-}
+
+/* Segmented toggles borrow the top bar's idiom: no borders, a filled pill
+   for the live one, brass kept for the Open button alone. */
 .pr-seg {
   display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 9px;
+  background: var(--g900);
 }
-.pr-seg button {
-  border-radius: 0;
-  border-left-width: 0;
+.pr-seg button,
+.pr-nav button,
+.pr-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 7px;
+  color: var(--mist-2);
+  transition:
+    background 0.13s,
+    color 0.13s;
 }
-.pr-seg button:first-child {
-  border-left-width: 1px;
-  border-radius: 7px 0 0 7px;
+.pr-seg button svg,
+.pr-nav button svg,
+.pr-close svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
-.pr-seg button:last-child {
-  border-radius: 0 7px 7px 0;
+.pr-seg button:hover,
+.pr-nav button:hover:not(:disabled),
+.pr-close:hover {
+  color: var(--mist);
 }
 .pr-seg button.sel {
-  background: var(--ink);
-  border-color: var(--ink);
-  color: var(--paper);
+  background: var(--g700);
+  color: var(--mist);
 }
 .pr-nav {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 3px;
 }
 .pr-nav button {
-  min-width: 26px;
-  line-height: 1.1;
+  padding: 0 5px;
 }
 .pr-nav button:disabled {
-  opacity: 0.45;
+  opacity: 0.4;
   cursor: default;
 }
 .pr-count {
-  color: var(--ink-2);
-  font-variant-numeric: tabular-nums;
-  min-width: 6ch;
+  min-width: 5ch;
   text-align: center;
-}
-.pr-counts {
-  display: flex;
-  gap: 10px;
-  color: var(--ink-2);
+  font-size: 11.5px;
+  color: var(--mist-3);
   font-variant-numeric: tabular-nums;
 }
-.pr-counts .c-add {
-  color: var(--ins-ink);
+.pr-close {
+  margin-left: 2px;
 }
-.pr-counts .c-del {
-  color: var(--del-ink);
+
+/* The PR identity rides in the title slot, where the document name lives. */
+#docTitle .pr-id {
+  color: var(--mist-3);
+  margin-right: 8px;
 }
-.pr-counts .c-chg {
-  color: var(--chg-edge);
+a#docTitle {
+  text-decoration: none;
+}
+a#docTitle:hover .pr-subject {
+  text-decoration: underline;
 }
 
 /* ---- the marks themselves ---- */
