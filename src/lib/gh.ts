@@ -44,10 +44,9 @@ const COMMON: Record<string, string> = {
 export function makeGhFetch(auth: Auth, opts: GhOptions = {}): FetchLike {
   const f = opts.fetchFn ?? globalThis.fetch;
   const base = opts.base ?? "/api/gh";
-  return async (
-    path: string,
-    init?: { headers?: Record<string, string>; method?: string; body?: string },
-  ) => {
+  // Params are contextually typed by FetchLike; repeating the shape here
+  // is what let `method`/`body` be added in two places at once.
+  return async (path, init) => {
     const headers = { ...COMMON, ...(init?.headers ?? {}) };
     if (init?.body) headers["Content-Type"] = "application/json";
     const rest = { method: init?.method, body: init?.body };

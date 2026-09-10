@@ -177,6 +177,10 @@ class ReadmarkStore {
           "http",
           `This PR changes no Markdown files${files.otherCount ? ` (${files.otherCount} other files changed)` : ""}.`,
         );
+      // A review belongs to the pull request it was written against, so
+      // opening a different one must not carry a draft across — it would
+      // submit against the wrong PR.
+      this.clearReview();
       this.pr = pr;
       this.files = files;
       this.commits = commits;

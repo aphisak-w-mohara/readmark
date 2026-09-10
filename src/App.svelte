@@ -36,11 +36,6 @@
   // Does this origin have a sign-in backend? A static build does not.
   store.checkSession();
 
-
-
-
-
-
   let changeIndex = $state(0);
 
   // outline + scrollspy track headings down to level 4 (matches the CSS depth)
@@ -178,7 +173,7 @@
     applyScroll();
   }
 
-/**
+  /**
    * The elements `j`/`k` step through — one per changed row, in row order.
    * Split renders a changed row on both sides, so only the after side is
    * taken: this list shares `changeIndex` with `changeRows` and the two
@@ -349,7 +344,7 @@
       {changeIndex}
       {changeCount}
       commitCount={store.commits.length}
-      rangeCount={rangeCount}
+      {rangeCount}
       onCommits={() => (commitsOpen = true)}
       onFile={pickFile}
       onLayout={(l) => (store.layout = l)}
