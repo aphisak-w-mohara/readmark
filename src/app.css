@@ -1729,6 +1729,69 @@ textarea {
   font-size: 12.5px;
   color: var(--ink-2);
 }
+.auth-warn {
+  margin: 8px 2px 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--mist-2);
+  border-left: 2px solid var(--brass);
+  padding-left: 9px;
+}
+.auth-help {
+  margin: 12px 0 4px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--mist-2);
+}
+.auth-help summary {
+  cursor: pointer;
+  color: var(--brass);
+  list-style: none;
+}
+.auth-help summary::-webkit-details-marker {
+  display: none;
+}
+/* Drawn, not a glyph: the UI stack has no triangle and renders a dot. */
+.auth-help summary::before {
+  content: "";
+  display: inline-block;
+  width: 0;
+  height: 0;
+  margin-right: 7px;
+  vertical-align: 1px;
+  border-left: 5px solid currentColor;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  transition: transform 0.12s;
+}
+.auth-help[open] summary::before {
+  transform: rotate(90deg);
+}
+.auth-help ol {
+  margin: 9px 0 0;
+  padding-left: 18px;
+}
+.auth-help li {
+  margin: 0 0 5px;
+}
+.auth-help li b {
+  color: var(--mist);
+  font-weight: 600;
+}
+.auth-help p {
+  margin: 9px 0 0;
+}
+.auth-help code {
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--g850);
+  font-family: var(--mono);
+  font-size: 11.5px;
+}
+.auth-help a {
+  color: var(--brass);
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
