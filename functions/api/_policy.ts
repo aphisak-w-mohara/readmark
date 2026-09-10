@@ -73,9 +73,28 @@ export function shouldRefresh(status: number, hasRefreshToken: boolean): boolean
   return hasRefreshToken && (status === 401 || status === 403);
 }
 
-/** Only same-origin, absolute-path returns — never an attacker's URL. */
+const RETURN_BASE = "https://readmark.invalid";
+
+/**
+ * Only same-origin, absolute-path returns — this value lands in a Location
+ * header after sign-in, which is the classic open-redirect phishing spot.
+ *
+ * A prefix check is not enough. Browsers fold "\\" into "/" and strip tabs
+ * and newlines inside URLs, so "/\\evil.example" and "/<tab>/evil.example"
+ * are protocol-relative in practice; the URL parser is the only thing that
+ * agrees with what a browser will actually do. The parse can also yield a
+ * same-origin result whose path still begins "//" (from "/..//evil"), which
+ * would be protocol-relative all over again — so the output is checked too.
+ */
 export function safeReturnPath(raw: string | null): string {
-  if (!raw) return "/";
-  if (!raw.startsWith("/") || raw.startsWith("//")) return "/";
-  return raw;
+  if (!raw || !raw.startsWith("/")) return "/";
+  let path: string;
+  try {
+    const url = new URL(raw, RETURN_BASE);
+    if (url.origin !== RETURN_BASE) return "/";
+    path = url.pathname + url.search + url.hash;
+  } catch {
+    return "/";
+  }
+  return path.startsWith("/") && !path.startsWith("//") ? path : "/";
 }

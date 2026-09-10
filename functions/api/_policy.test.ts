@@ -88,13 +88,38 @@ describe("shouldRefresh", () => {
 });
 
 describe("safeReturnPath", () => {
-  test("keeps same-origin paths", () => {
+  test("keeps same-origin paths, with query and fragment", () => {
     expect(safeReturnPath("/docs")).toBe("/docs");
+    expect(safeReturnPath("/docs?a=1#top")).toBe("/docs?a=1#top");
+    expect(safeReturnPath("/")).toBe("/");
   });
 
   test("refuses anything that could leave the origin", () => {
     expect(safeReturnPath("//evil.example")).toBe("/");
+    expect(safeReturnPath("///evil.example")).toBe("/");
     expect(safeReturnPath("https://evil.example")).toBe("/");
+    expect(safeReturnPath("http://evil.example")).toBe("/");
     expect(safeReturnPath(null)).toBe("/");
+    expect(safeReturnPath("")).toBe("/");
+  });
+
+  // Browsers fold these into a protocol-relative URL, so a prefix check on
+  // "//" alone lets an attacker redirect the victim after sign-in.
+  test("refuses the shapes a browser reads as protocol-relative", () => {
+    expect(safeReturnPath("/\\evil.example")).toBe("/");
+    expect(safeReturnPath("/\\/evil.example")).toBe("/");
+    expect(safeReturnPath("/\t/evil.example")).toBe("/");
+    expect(safeReturnPath("/\n/evil.example")).toBe("/");
+    expect(safeReturnPath("/\r//evil.example")).toBe("/");
+  });
+
+  test("refuses a same-origin parse that still yields a protocol-relative path", () => {
+    expect(safeReturnPath("/..//evil.example")).toBe("/");
+  });
+
+  test("a relative or scheme-like value is not a path at all", () => {
+    expect(safeReturnPath("docs")).toBe("/");
+    expect(safeReturnPath("javascript:alert(1)")).toBe("/");
+    expect(safeReturnPath("\\\\evil.example")).toBe("/");
   });
 });
