@@ -8,6 +8,10 @@ interface Ctx {
 }
 
 export const onRequestGet = async ({ request, env }: Ctx): Promise<Response> => {
+  // No App registered means no sign-in: the route is closed rather than
+  // merely unlinked, and it opens again the moment the secret is set.
+  if (!env.GH_CLIENT_ID) return new Response("Sign-in is not configured.", { status: 404 });
+
   const url = new URL(request.url);
   const back = safeReturnPath(url.searchParams.get("return"));
   const nonce = crypto.randomUUID();

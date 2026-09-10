@@ -91,9 +91,9 @@ Two ways to authenticate, and they are not equivalent:
 | **Fine-grained token**               | Only if the org enables fine-grained tokens | An org owner |
 | **Classic token**                    | Unless the org restricts classic tokens     | You          |
 
-Signing in is the safer route: the credential lives in an httpOnly cookie that page scripts cannot read. It needs the deployed origin, since OAuth requires the Pages Functions above.
+**Sign-in is not switched on yet.** No GitHub App is registered, so a token is the way in. The session path — the Pages Functions, the httpOnly cookies, the refresh — is written and unit-tested; re-enabling it is `SIGN_IN_ENABLED` in [`src/lib/gh.ts`](src/lib/gh.ts) once an App exists. That one flag governs the lot: no startup probe, no session preferred over your token, no sign-in UI. The `/api/auth/login` route independently returns 404 while `GH_CLIENT_ID` is unset, so the callback is closed rather than merely unlinked. When it is on, signing in is the safer route: the credential lives in a cookie that page scripts cannot read.
 
-A pasted token is the fallback — it is the only way pull requests work in the offline single-file build or a self-hosted copy. Prefer a fine-grained token with **Contents: read** and **Pull requests: read**, scoped to the repositories you review. It is stored in `sessionStorage` unless you tick _remember on this device_, and it only ever travels as an `Authorization` header to `api.github.com`.
+A pasted token is the way in today, and the fallback thereafter — it is the only way pull requests work in the offline single-file build or a self-hosted copy. Prefer a fine-grained token with **Contents: read** and **Pull requests: read**, scoped to the repositories you review. It is stored in `sessionStorage` unless you tick _remember on this device_, and it only ever travels as an `Authorization` header to `api.github.com`.
 
 Be aware of the trade: a stored token is readable by any script running on the page, and this app renders Markdown written by other people. Keep its scope small and its expiry short. Note also that a classic token has no read-only private scope — it carries write access to everything you can reach, which is why it is the least good option despite being the one that needs nobody's permission.
 

@@ -11,6 +11,18 @@ import type { FetchLike, FetchResponse } from "../core/source";
 
 export type Auth = { mode: "session" } | { mode: "token"; token: string };
 
+/**
+ * Whether signing in is offered at all. No GitHub App is registered yet, so
+ * the OAuth callback would be dead; a pasted token is the way in until one
+ * exists. The whole session path — proxy, cookies, refresh — stays in place
+ * behind this, and flipping it back on is this one line.
+ *
+ * It lives here rather than in a view because every other site derives from
+ * it: with sign-in off there is no probe, `store.auth` can never choose a
+ * session, and no "Sign out" state is reachable.
+ */
+export const SIGN_IN_ENABLED = false;
+
 export interface GhOptions {
   /** Injected for tests; defaults to the global fetch. */
   fetchFn?: typeof globalThis.fetch;

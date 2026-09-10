@@ -77,8 +77,8 @@
       </button>
     {:else}
       <p class="gh-hint">
-        This copy has no sign-in backend — it's the offline build or a self-hosted file, so there
-        is nothing to sign in to. Paste a token to read pull requests.
+        There is no sign-in here — either this is the offline build or a self-hosted file, or
+        signing in with GitHub is not switched on yet. Paste a token to read pull requests.
       </p>
     {/if}
 
