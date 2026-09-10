@@ -28,7 +28,7 @@ import {
   type PrInfo,
 } from "./core/pr";
 import { clearToken, loadToken, saveToken, type TokenStore, type TokenStores } from "./core/token";
-import { makeGhFetch, probeSession, type Auth } from "./lib/gh";
+import { makeGhFetch, probeSession, SIGN_IN_ENABLED, type Auth } from "./lib/gh";
 
 const memory: StorageLike = (() => {
   const m = new Map<string, string>();
@@ -84,6 +84,10 @@ class ReadmarkStore {
   });
   token = $state<string | null>(loadToken(tokenStores));
 
+  /** The login behind the current credential; it cannot change under one. */
+  private login: string | null = null;
+  private loginFor: string | null = null;
+
   constructor() {
     this.outlineOpen = this.prefs.outline;
   }
@@ -95,19 +99,31 @@ class ReadmarkStore {
     return null;
   }
 
-  /** Ask the origin whether there is a backend to sign in to at all. */
+  /**
+   * Ask the origin whether there is a backend to sign in to at all. With
+   * sign-in switched off there is nothing to ask, and skipping the probe is
+   * what makes every downstream site agree: no session, no proxy, no
+   * "Sign out" the button no longer offers.
+   */
   async checkSession() {
-    this.session = await probeSession();
+    this.session = SIGN_IN_ENABLED ? await probeSession() : { available: false, signedIn: false };
   }
 
   setToken(token: string, remember: boolean) {
     saveToken(tokenStores, token, remember);
     this.token = token;
+    this.forgetLogin();
   }
 
   forgetToken() {
     clearToken(tokenStores);
     this.token = null;
+    this.forgetLogin();
+  }
+
+  private forgetLogin() {
+    this.login = null;
+    this.loginFor = null;
   }
 
   /** Render Markdown, then sanitize the HTML. */
@@ -166,10 +182,18 @@ class ReadmarkStore {
     gh: FetchLike,
   ) {
     this.lastReviewSha = null;
-    const login = await currentLogin(gh);
-    if (!login) return;
+    // Resolved once per credential rather than once per pull request: the
+    // account behind a token does not change while that token is in use.
+    const key = this.session.signedIn ? "session" : (this.token ?? "");
+    if (this.loginFor !== key) {
+      const login = await currentLogin(gh);
+      if (!login) return; // transient failure — try again on the next PR
+      this.login = login;
+      this.loginFor = key;
+    }
+    if (!this.login) return;
     try {
-      this.lastReviewSha = await lastReviewedCommit(ref, login, gh);
+      this.lastReviewSha = await lastReviewedCommit(ref, this.login, gh);
     } catch {
       this.lastReviewSha = null;
     }
