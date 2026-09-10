@@ -30,6 +30,8 @@ export interface PrFile {
   status: "added" | "removed" | "modified" | "renamed" | "changed" | "copied" | "unchanged";
   additions: number;
   deletions: number;
+  /** Unified diff for this file; absent for pure renames and huge files. */
+  patch?: string;
 }
 
 export interface PrFiles {
@@ -135,6 +137,7 @@ interface RawFile {
   status: PrFile["status"];
   additions: number;
   deletions: number;
+  patch?: string;
 }
 
 /**
@@ -155,6 +158,7 @@ function partition(files: RawFile[]): PrFiles {
       status: f.status,
       additions: f.additions,
       deletions: f.deletions,
+      patch: f.patch,
     });
   }
   return { markdown, otherCount };
