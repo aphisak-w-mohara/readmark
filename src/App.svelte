@@ -9,6 +9,9 @@
   import StatusBar from "./components/StatusBar.svelte";
   import AaPanel from "./components/AaPanel.svelte";
   import SourceModal from "./components/SourceModal.svelte";
+  import PrBar from "./components/PrBar.svelte";
+  import DiffView from "./components/DiffView.svelte";
+  import type { PrFile } from "./core/pr";
 
   let stageEl = $state<HTMLElement>();
   let articleEl = $state<HTMLElement>();
@@ -24,6 +27,12 @@
 
   // opening document
   store.load(SAMPLE);
+
+  // Does this origin have a sign-in backend? A static build does not.
+  store.checkSession();
+
+
+  let changeIndex = $state(0);
 
   // outline + scrollspy track headings down to level 4 (matches the CSS depth)
   const outline = $derived(store.doc.headings.filter((h: Heading) => h.level <= 4));
@@ -160,6 +169,27 @@
     applyScroll();
   }
 
+  /** Anchors for the change-to-change jump: every row that is not untouched. */
+  function changeEls(): HTMLElement[] {
+    if (!articleEl) return [];
+    return [
+      ...articleEl.querySelectorAll<HTMLElement>(
+        '.diff-row:not([data-op="same"]), .diff-side[data-op="changed"], .diff-side[data-op="added"], .diff-side[data-op="removed"]',
+      ),
+    ].filter((el, i, all) => i === 0 || el !== all[i - 1]);
+  }
+
+  function stepChange(delta: number) {
+    const els = changeEls();
+    if (!els.length || !stageEl) return;
+    const next = (changeIndex + delta + els.length) % els.length;
+    changeIndex = next;
+    stageEl.scrollTo({
+      top: els[next].offsetTop - 80,
+      behavior: reduceMotion ? "auto" : "smooth",
+    });
+  }
+
   function jump(id: string) {
     const el = document.getElementById(id);
     if (!el || !stageEl) return;
@@ -208,9 +238,26 @@
     sourceOpen = false;
   }
   function onKey(e: KeyboardEvent) {
-    if (e.key !== "Escape") return;
-    if (aaOpen || sourceOpen) closePanels();
-    else if (store.zen) toggleZen();
+    if (e.key === "Escape") {
+      if (aaOpen || sourceOpen) closePanels();
+      else if (store.zen) toggleZen();
+      return;
+    }
+    // j/k step between changes, but never while something is being typed into.
+    if (store.mode !== "diff" || aaOpen || sourceOpen) return;
+    const t = e.target as HTMLElement | null;
+    if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
+    if (e.key === "j") stepChange(1);
+    else if (e.key === "k") stepChange(-1);
+  }
+
+  const changeCount = $derived(
+    store.diff ? store.diff.rows.filter((r) => r.op !== "same").length : 0,
+  );
+
+  async function pickFile(f: PrFile) {
+    changeIndex = 0;
+    await store.openFile(f);
   }
 </script>
 
@@ -235,12 +282,41 @@
     onToggleZen={toggleZen}
   />
 
+  {#if store.mode === "diff" && store.pr && store.files}
+    <PrBar
+      pr={store.pr}
+      files={store.files}
+      active={store.activeFile}
+      diff={store.diff}
+      layout={store.layout}
+      scope={store.scope}
+      busy={store.busy}
+      {changeIndex}
+      {changeCount}
+      onFile={pickFile}
+      onLayout={(l) => (store.layout = l)}
+      onScope={(s) => (store.scope = s)}
+      onStep={stepChange}
+      onExit={() => store.load(SAMPLE)}
+    />
+  {/if}
+
   <div id="body">
     <Outline headings={outline} {activeId} onJump={jump} />
     <main id="stage" bind:this={stageEl} onscroll={onScroll}>
       <div class="page-wrap">
-        <article id="page" class="md" class:focusing={store.zen} bind:this={articleEl}>
-          {@html store.doc.html}
+        <article
+          id="page"
+          class="md"
+          class:focusing={store.zen}
+          class:diffing={store.mode === "diff"}
+          bind:this={articleEl}
+        >
+          {#if store.mode === "diff" && store.diff}
+            <DiffView diff={store.diff} layout={store.layout} scope={store.scope} />
+          {:else}
+            {@html store.doc.html}
+          {/if}
         </article>
       </div>
     </main>
@@ -249,7 +325,17 @@
   <StatusBar title={store.doc.title} {words} {minutes} pct={Math.round(progress)} />
 
   <AaPanel open={aaOpen} />
-  <SourceModal open={sourceOpen} onClose={() => (sourceOpen = false)} onRender={(md) => store.load(md)} />
+  <SourceModal
+    open={sourceOpen}
+    onClose={() => (sourceOpen = false)}
+    onRender={(md) => store.load(md)}
+    onPr={(url) => store.openPr(url)}
+    available={store.session.available}
+    signedIn={store.session.signedIn}
+    token={store.token}
+    onToken={(t, r) => store.setToken(t, r)}
+    onForget={() => store.forgetToken()}
+  />
 
   <div id="scrim" class:show={aaOpen || sourceOpen} onclick={closePanels} role="presentation"></div>
 

@@ -16,6 +16,15 @@ import { renderBlockList, stripRefDefs, type Heading, type MarkdownOptions } fro
 
 const { delOpen: DEL_OPEN, delClose: DEL_CLOSE, insOpen: INS_OPEN, insClose: INS_CLOSE } = MARK;
 
+const DEL_RUN = new RegExp(DEL_OPEN + "[\\s\\S]*?" + DEL_CLOSE, "g");
+const INS_RUN = new RegExp(INS_OPEN + "[\\s\\S]*?" + INS_CLOSE, "g");
+
+/** The merged source as the before side saw it: deletions marked, insertions gone. */
+const deleteSide = (merged: string): string => merged.replace(INS_RUN, "");
+
+/** The merged source as the after side sees it: insertions marked, deletions gone. */
+const insertSide = (merged: string): string => merged.replace(DEL_RUN, "");
+
 /**
  * One token is a word, a run of whitespace, a punctuation mark, or a whole
  * inline construct. Constructs are matched first and kept intact: a diff
@@ -51,11 +60,16 @@ function lcs(a: string[], b: string[]): [number, number][] {
   return pairs;
 }
 
-/** Wrap a run of tokens, unless it is only whitespace (nothing to show). */
+/**
+ * Wrap a run of tokens. Whitespace at the edges stays outside the mark, so a
+ * strikethrough never stretches across a line break; a run that is only
+ * whitespace is not a change worth showing at all.
+ */
 function mark(run: string[], open: string, close: string): string {
   const joined = run.join("");
   if (!joined.trim()) return open === INS_OPEN ? joined : "";
-  return open + joined + close;
+  const [, lead, core, trail] = joined.match(/^(\s*)([\s\S]*?)(\s*)$/) as RegExpMatchArray;
+  return lead + open + core + close + trail;
 }
 
 /**
@@ -83,11 +97,16 @@ export function wordDiff(before: string, after: string): string {
   return out;
 }
 
-/** The line-leading structural markers of a block, as a comparable string. */
+/**
+ * The line-leading structural markers of a block, in order. Lines with no
+ * marker are dropped: a paragraph rewrapped from three lines to two has the
+ * same structure, and counting its blank markers would say otherwise.
+ */
 function skeleton(src: string): string {
   return src
     .split("\n")
     .map((l) => (l.match(/^\s*(#{1,6}\s|[-+*]\s|\d+[.)]\s|>\s?|\|)/)?.[1] ?? "").trim())
+    .filter(Boolean)
     .join("|");
 }
 
@@ -136,6 +155,9 @@ export interface DiffDoc {
   counts: { added: number; removed: number; changed: number };
 }
 
+/** Remove element ids from a copy of the document (the split view's left column). */
+const stripIds = (html: string): string => html.replace(/ id="[^"]*"/g, "");
+
 const sentinelsToTags = (html: string): string =>
   html
     .replaceAll(DEL_OPEN, '<del class="diff-del">')
@@ -162,12 +184,17 @@ export function toDiffHtml(before: string, after: string, opts: MarkdownOptions 
         afterSrcs.push(c.after.src);
         marked.push(false);
         break;
-      case "changed":
-        unifiedSrcs.push(mergedSrc(c.before, c.after));
-        beforeSrcs.push(c.before.src);
-        afterSrcs.push(c.after.src);
-        marked.push(canMark(c.before, c.after));
+      case "changed": {
+        const ok = canMark(c.before, c.after);
+        const merged = mergedSrc(c.before, c.after);
+        unifiedSrcs.push(merged);
+        // Each column carries only its own half of the edit, so the split
+        // view marks what left on the left and what arrived on the right.
+        beforeSrcs.push(ok ? deleteSide(merged) : c.before.src);
+        afterSrcs.push(ok ? insertSide(merged) : c.after.src);
+        marked.push(ok);
         break;
+      }
       case "added":
         unifiedSrcs.push(c.after.src);
         beforeSrcs.push("");
@@ -191,8 +218,10 @@ export function toDiffHtml(before: string, after: string, opts: MarkdownOptions 
     op: c.op,
     kind: c.op === "removed" ? c.before.kind : c.after.kind,
     unified: sentinelsToTags(uni.html[i]),
-    before: bef.html[i],
-    after: aft.html[i],
+    // The before column is a second copy of the document: it must not carry
+    // heading ids, or every anchor in the page would be ambiguous.
+    before: stripIds(sentinelsToTags(bef.html[i])),
+    after: sentinelsToTags(aft.html[i]),
     marked: marked[i],
     line: c.op === "removed" ? c.before.line : c.after.line,
   }));
@@ -200,10 +229,13 @@ export function toDiffHtml(before: string, after: string, opts: MarkdownOptions 
   // A heading is marked changed when its own row changed, or anything under
   // it did — that dot in the outline is what makes a long document scannable.
   const headings: (Heading & { changed: boolean })[] = [];
+  let seen = 0; // every heading row consumed one slot in the unified render
   let current = -1;
   rows.forEach((r) => {
-    if (r.kind === "heading" && r.op !== "removed") {
-      headings.push({ ...uni.headings[headings.length], changed: r.op !== "same" });
+    if (r.kind === "heading") {
+      const h = uni.headings[seen++];
+      if (r.op === "removed") return;
+      if (h) headings.push({ ...h, changed: r.op !== "same" });
       current = headings.length - 1;
     } else if (r.op !== "same" && current >= 0) {
       headings[current].changed = true;
@@ -217,5 +249,5 @@ export function toDiffHtml(before: string, after: string, opts: MarkdownOptions 
     else if (r.op === "changed") counts.changed++;
   }
 
-  return { rows, headings: headings.filter((h) => h.id !== undefined), counts };
+  return { rows, headings, counts };
 }

@@ -67,6 +67,11 @@ textarea {
 
 /* ---- reading themes: paper + ink + code tokens live on #app ---- */
 #app[data-theme="original"] {
+  --ins-bg: rgba(99, 153, 34, 0.16);
+  --ins-ink: #2f5410;
+  --del-bg: rgba(226, 75, 74, 0.14);
+  --del-ink: #7d2422;
+  --chg-edge: #b08a2e;
   --paper: #fcfcf9;
   --mat: #e4e3dc;
   --ink: #23262b;
@@ -85,6 +90,11 @@ textarea {
   --t-punct: #8b8f97;
 }
 #app[data-theme="quiet"] {
+  --ins-bg: rgba(90, 140, 30, 0.18);
+  --ins-ink: #2c4f10;
+  --del-bg: rgba(210, 70, 70, 0.16);
+  --del-ink: #77201f;
+  --chg-edge: #a5822c;
   --paper: #e9e9e3;
   --mat: #d3d3cb;
   --ink: #31343a;
@@ -103,6 +113,11 @@ textarea {
   --t-punct: #7d818a;
 }
 #app[data-theme="sepia"] {
+  --ins-bg: rgba(105, 130, 45, 0.22);
+  --ins-ink: #3e4d15;
+  --del-bg: rgba(190, 70, 45, 0.18);
+  --del-ink: #7a2a17;
+  --chg-edge: #a4762a;
   --paper: #f2e7d0;
   --mat: #d9cbab;
   --ink: #463a28;
@@ -121,6 +136,11 @@ textarea {
   --t-punct: #8b7a5c;
 }
 #app[data-theme="night"] {
+  --ins-bg: rgba(126, 176, 74, 0.2);
+  --ins-ink: #b9d79a;
+  --del-bg: rgba(224, 104, 100, 0.18);
+  --del-ink: #e8a9a6;
+  --chg-edge: #c9a25a;
   --paper: #23262c;
   --mat: #15171b;
   --ink: #c7cad0;
@@ -139,6 +159,11 @@ textarea {
   --t-punct: #868b93;
 }
 #app[data-theme="black"] {
+  --ins-bg: rgba(120, 170, 70, 0.18);
+  --ins-ink: #a9cb8b;
+  --del-bg: rgba(216, 96, 92, 0.16);
+  --del-ink: #dc9d9a;
+  --chg-edge: #c49a4c;
   --paper: #0f1115;
   --mat: #000;
   --ink: #b6bac1;
@@ -1234,7 +1259,9 @@ textarea {
   display: flex;
   gap: 10px;
 }
-#ghUrl {
+#ghUrl,
+#prUrl,
+.auth-token input {
   flex: 1;
   height: 46px;
   background: var(--g850);
@@ -1246,10 +1273,14 @@ textarea {
   outline: none;
   transition: border-color 0.15s;
 }
-#ghUrl:focus {
+#ghUrl:focus,
+#prUrl:focus,
+.auth-token input:focus {
   border-color: var(--brass);
 }
-#ghUrl::placeholder {
+#ghUrl::placeholder,
+#prUrl::placeholder,
+.auth-token input::placeholder {
   color: var(--mist-3);
 }
 .gh-hint {
@@ -1384,4 +1415,325 @@ textarea {
   .bar-center {
     display: none;
   }
+}
+
+/* ============================================================
+   PR diff review
+   ============================================================ */
+
+#prbar {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 9px 16px 10px;
+  background: var(--mat);
+  border-bottom: 1px solid var(--rule);
+  color: var(--ink);
+  font-size: 12.5px;
+}
+.pr-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.pr-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+.pr-title:hover .pr-name {
+  text-decoration: underline;
+}
+.pr-num {
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.pr-name {
+  font-weight: 550;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pr-exit,
+.pr-nav button,
+.pr-seg button {
+  font: inherit;
+  color: var(--ink-2);
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: 7px;
+  padding: 3px 9px;
+  cursor: pointer;
+}
+.pr-exit:hover,
+.pr-nav button:hover:not(:disabled),
+.pr-seg button:hover {
+  color: var(--ink);
+}
+.pr-files select {
+  font: inherit;
+  max-width: 46ch;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 7px;
+  padding: 3px 8px;
+}
+.pr-other {
+  color: var(--ink-2);
+}
+.pr-seg {
+  display: inline-flex;
+}
+.pr-seg button {
+  border-radius: 0;
+  border-left-width: 0;
+}
+.pr-seg button:first-child {
+  border-left-width: 1px;
+  border-radius: 7px 0 0 7px;
+}
+.pr-seg button:last-child {
+  border-radius: 0 7px 7px 0;
+}
+.pr-seg button.sel {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+}
+.pr-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.pr-nav button {
+  min-width: 26px;
+  line-height: 1.1;
+}
+.pr-nav button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.pr-count {
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+  min-width: 6ch;
+  text-align: center;
+}
+.pr-counts {
+  display: flex;
+  gap: 10px;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+.pr-counts .c-add {
+  color: var(--ins-ink);
+}
+.pr-counts .c-del {
+  color: var(--del-ink);
+}
+.pr-counts .c-chg {
+  color: var(--chg-edge);
+}
+
+/* ---- the marks themselves ---- */
+
+.md ins.diff-ins,
+.md del.diff-del {
+  border-radius: 3px;
+  padding: 0 0.12em;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.md ins.diff-ins {
+  background: var(--ins-bg);
+  color: var(--ins-ink);
+  text-decoration: none;
+}
+.md del.diff-del {
+  background: var(--del-bg);
+  color: var(--del-ink);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+
+/* ---- rows ---- */
+
+.diff-row > :first-child {
+  margin-top: 0;
+}
+.diff-row > :last-child {
+  margin-bottom: 0;
+}
+.diff-row[data-op="added"],
+.diff-row[data-op="removed"],
+.diff-row[data-op="changed"]:not([data-marked="true"]) {
+  border-left: 3px solid var(--chg-edge);
+  border-radius: 0;
+  padding: 2px 0 2px 13px;
+  margin-left: -16px;
+}
+.diff-row[data-op="added"] {
+  border-left-color: var(--ins-ink);
+  background: var(--ins-bg);
+}
+.diff-row[data-op="removed"] {
+  border-left-color: var(--del-ink);
+  background: var(--del-bg);
+}
+.diff-row[data-op="removed"] > * {
+  opacity: 0.72;
+}
+
+.diff-fold {
+  display: block;
+  width: 100%;
+  margin: 1.1em 0;
+  padding: 5px 10px;
+  font: inherit;
+  font-family: var(--ui);
+  font-size: 12.5px;
+  color: var(--ink-2);
+  background: transparent;
+  border: 1px dashed var(--rule);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.diff-fold:hover {
+  color: var(--ink);
+  border-style: solid;
+}
+
+/* ---- split ---- */
+
+.diff-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  column-gap: 22px;
+}
+.diff-col-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 4px 0 5px;
+  margin-bottom: 6px;
+  background: var(--paper);
+  border-bottom: 1px solid var(--rule);
+  font-family: var(--ui);
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+.diff-side {
+  min-width: 0;
+  padding: 2px 0;
+}
+.diff-side > :first-child {
+  margin-top: 0;
+}
+.diff-side[data-op="added"] {
+  background: var(--ins-bg);
+}
+.diff-side[data-op="removed"] {
+  background: var(--del-bg);
+}
+.diff-side[data-op="changed"] {
+  box-shadow: inset 3px 0 0 var(--chg-edge);
+  padding-left: 10px;
+}
+.diff-absent {
+  color: var(--ink-2);
+  opacity: 0.5;
+}
+.diff-fold.span {
+  grid-column: 1 / 3;
+}
+
+/* A split diff needs the full stage, not a single reading measure. */
+#page.diffing:has(.diff-split) {
+  max-width: none;
+}
+
+@media (max-width: 780px) {
+  .diff-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .diff-col-head:nth-of-type(2) {
+    display: none;
+  }
+}
+
+/* ---- auth panel in the Open modal ---- */
+
+.auth-panel,
+.auth-state {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--rule);
+  font-size: 13px;
+}
+.auth-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.auth-state .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ins-ink);
+}
+.auth-link {
+  font: inherit;
+  color: var(--link);
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.auth-signin {
+  display: inline-block;
+  text-decoration: none;
+}
+.auth-toggle {
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--link);
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.auth-token {
+  display: flex;
+  gap: 8px;
+  margin: 10px 0 8px;
+}
+.auth-token input {
+  flex: 1;
+  min-width: 0;
+}
+.auth-remember {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }

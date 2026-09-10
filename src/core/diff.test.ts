@@ -66,7 +66,12 @@ describe("wordDiff", () => {
   });
 
   test("a pure insertion has no delete marker", () => {
-    expect(wordDiff("a c", "a b c")).toBe(`a ${INS}b ${INS_END}c`);
+    expect(wordDiff("a c", "a b c")).toBe(`a ${INS}b${INS_END} c`);
+  });
+
+  test("a mark never spans the whitespace at its edges", () => {
+    const out = wordDiff("one two\nthree", "one four\nthree");
+    expect(out).toBe(`one ${DEL}two${DEL_END}${INS}four${INS_END}\nthree`);
   });
 
   test("sentinel characters in the input cannot forge a marker", () => {
@@ -158,7 +163,69 @@ describe("toDiffHtml", () => {
   test("split columns hold each side on its own", () => {
     const d = toDiffHtml("only before", "only after");
     const [row] = d.rows;
-    expect(row.before).toContain("only before");
-    expect(row.after).toContain("only after");
+    expect(row.before).toBe('<p>only <del class="diff-del">before</del></p>');
+    expect(row.after).toBe('<p>only <ins class="diff-ins">after</ins></p>');
+  });
+});
+
+describe("outline integrity", () => {
+  test("a removed heading does not shift the outline", () => {
+    const d = toDiffHtml("# A\n\n## Gone\n\nbody\n\n## B\n\ntail", "# A\n\n## B\n\ntail");
+    expect(d.headings.map((h) => h.text)).toEqual(["A", "B"]);
+    expect(d.headings.map((h) => h.id)).toEqual(["a", "b"]);
+  });
+
+  test("the split view's before column carries no ids", () => {
+    const d = toDiffHtml("## Quick start\n\nold", "## Quick start\n\nnew");
+    expect(d.rows[0].after).toContain('id="quick-start"');
+    expect(d.rows[0].before).not.toContain("id=");
+  });
+});
+
+describe("rewrapping", () => {
+  const BEFORE = [
+    "An elegant, iOS-Books-style Markdown reader. Paste Markdown",
+    "or point it at a GitHub URL, then read it your way — swappable",
+    "paper themes, real typefaces, and an auto outline.",
+  ].join("\n");
+  const AFTER = [
+    "An elegant, iOS-Books-style Markdown reader. Paste Markdown or point it at a GitHub URL,",
+    "then read it your way — five paper themes, real typefaces, and a live outline.",
+  ].join("\n");
+
+  test("a rewrap that also edits words still marks the words", () => {
+    const row = toDiffHtml(BEFORE, AFTER).rows[0];
+    expect(row.op).toBe("changed");
+    expect(row.marked).toBe(true);
+    expect(row.unified).toContain('<del class="diff-del">swappable</del>');
+    expect(row.unified).toContain('<ins class="diff-ins">five</ins>');
+    expect(row.unified).toContain('<ins class="diff-ins">live</ins>');
+  });
+
+  test("and marks nothing else in the paragraph", () => {
+    const row = toDiffHtml(BEFORE, AFTER).rows[0];
+    // swappable→five, an→a, auto→live: three runs, not one smeared block
+    expect(row.unified.match(/<ins /g) ?? []).toHaveLength(3);
+    expect(row.unified.match(/<del /g) ?? []).toHaveLength(3);
+    expect(row.unified).toContain("paper themes, real typefaces");
+  });
+});
+
+describe("split columns", () => {
+  test("each side marks only its own half of the edit", () => {
+    const row = toDiffHtml("five paper themes", "six paper themes").rows[0];
+    expect(row.before).toContain('<del class="diff-del">five</del>');
+    expect(row.before).not.toContain("<ins");
+    expect(row.before).not.toContain("six");
+    expect(row.after).toContain('<ins class="diff-ins">six</ins>');
+    expect(row.after).not.toContain("<del");
+    expect(row.after).not.toContain("five");
+  });
+
+  test("an unmarkable change still shows each side plainly", () => {
+    const row = toDiffHtml("```js\nlet a = 1;\n```", "```js\nlet a = 2;\n```").rows[0];
+    expect(row.before).toContain("let a = 1;");
+    expect(row.after).toContain("let a = 2;");
+    expect(row.before).not.toContain("<del");
   });
 });

@@ -1,6 +1,8 @@
 # Readmark
 
-An elegant, iOS-Books-style Markdown reader. Paste Markdown or point it at a GitHub URL, then read it your way — swappable paper themes, real typefaces, adjustable size/spacing/width, an auto outline, focus mode, and reading progress. No server, no CDN, no tracking.
+An elegant, iOS-Books-style Markdown reader. Paste Markdown or point it at a GitHub URL, then read it your way — swappable paper themes, real typefaces, adjustable size/spacing/width, an auto outline, focus mode, and reading progress. No CDN, no tracking, and no server for anything you read from a file, a paste, or a public URL.
+
+It also reviews the Markdown in a pull request. GitHub diffs Markdown line by line, so rewrapping a paragraph lights up every line of it; Readmark diffs by word inside rendered prose, so a three-word edit shows as three words. See [Reviewing a pull request](#reviewing-a-pull-request) — the one feature that does need a backend, and only if you want to sign in rather than paste a token.
 
 Built with **Svelte 5** + **Vite 8**, linted/formatted with **Oxlint + oxfmt**, tested and tooled with **Bun**. Ships as a single self-contained `index.html`.
 
@@ -28,17 +30,29 @@ src/
 ├─ core/                 pure TypeScript — no DOM, no Svelte, no IO
 │  ├─ markdown.ts        toHtml(src, {highlight}) -> { html, headings, title }
 │  ├─ highlight.ts       highlight(code, lang) -> html  (single-scan tokenizer)
+│  ├─ blocks.ts          splitBlocks(src) -> Block[]  (the shared block walker)
+│  ├─ align.ts           align(before, after) -> Change[]  (rewrap-blind matching)
+│  ├─ diff.ts            toDiffHtml(before, after) -> DiffDoc  (word-level marks)
 │  ├─ source.ts          resolveGitHub(input) + fetchMarkdown(input, fetch)
+│  ├─ pr.ts              resolvePR(url), listMarkdownFiles, fetchSides
+│  ├─ token.ts           validate / load / save a pasted GitHub token
 │  ├─ prefs.ts           coerce / load / save prefs against injected storage
 │  ├─ reading.ts         reading-time, progress %, active heading, focus target
 │  ├─ escape.ts, slug.ts small shared primitives
-│  └─ *.test.ts          41 tests, all pure in/out
+│  └─ *.test.ts          140+ tests, all pure in/out
 ├─ lib/theme.ts          theme / font / spacing / width option tables
+├─ lib/gh.ts             makeGhFetch(auth) — session proxy vs. direct + Bearer
 ├─ state.svelte.ts       reactive store (runes) — glue only, delegates to core
 ├─ components/           TopBar · Outline · StatusBar · AaPanel · SourceModal
+│                        AuthPanel · PrBar · DiffView
 ├─ App.svelte            layout + stage + scroll math (uses core/reading)
 ├─ app.css               the reading instrument's styling + 5 reading themes
 └─ sample.md             the opening document
+
+functions/api/           Cloudflare Pages Functions (only needed for sign-in)
+├─ auth/*.ts             OAuth code exchange; token kept in an httpOnly cookie
+├─ gh/[[path]].ts        read-only, allowlisted GET proxy to api.github.com
+└─ _policy.ts            what is proxied, and the cookie rules — unit-tested
 ```
 
 ### Seams
@@ -49,7 +63,36 @@ Real seams (something varies across them → dependency-injected, faked in tests
 - **Storage** — prefs take a `StorageLike` (localStorage in the app, in-memory in tests).
 - **Source** — paste vs GitHub, resolved through one `resolveGitHub` interface.
 
-Internal seam: the Markdown parser takes `highlight` as an injected dependency, so it can be tested with a fake highlighter.
+- **Credentials** — `makeGhFetch(auth)` returns the same `FetchLike` whether the request rides a signed-in session or a pasted token, so `core/pr.ts` never branches on it.
+
+Internal seams: the Markdown parser takes `highlight` as an injected dependency, so it can be tested with a fake highlighter; and `core/blocks.ts` is the one definition of a block, shared by the renderer and the differ.
+
+## Reviewing a pull request
+
+Paste a pull request URL into **Open → Pull request**. Readmark lists the Markdown files the PR touches, fetches both sides of the one you pick, and renders the change:
+
+- **Unified** — the document, with deletions struck through and insertions highlighted in place.
+- **Split** — before and after side by side, each column marking only its own half of the edit.
+- **Whole doc / Changes only** — collapse the untouched blocks when you just want the edits.
+- `j` and `k` jump between changes. On a long README with three changed words, that is the whole review.
+
+Rewrapping is invisible: blocks are matched on their words with whitespace collapsed, so a reflowed paragraph is the same paragraph. Code blocks, raw HTML, and edits that change a block's structure (a bullet list turned numbered) are flagged whole rather than word-marked, because word marks there would be misleading.
+
+### Access
+
+Two ways to authenticate, and they are not equivalent:
+
+|                                      | Reads org-owned private repos               | Approved by  |
+| ------------------------------------ | ------------------------------------------- | ------------ |
+| **Sign in with GitHub** (GitHub App) | Once the app is installed on that org       | An org owner |
+| **Fine-grained token**               | Only if the org enables fine-grained tokens | An org owner |
+| **Classic token**                    | Unless the org restricts classic tokens     | You          |
+
+Signing in is the safer route: the credential lives in an httpOnly cookie that page scripts cannot read. It needs the deployed origin, since OAuth requires the Pages Functions above.
+
+A pasted token is the fallback — it is the only way pull requests work in the offline single-file build or a self-hosted copy. Prefer a fine-grained token with **Contents: read** and **Pull requests: read**, scoped to the repositories you review. It is stored in `sessionStorage` unless you tick _remember on this device_, and it only ever travels as an `Authorization` header to `api.github.com`.
+
+Be aware of the trade: a stored token is readable by any script running on the page, and this app renders Markdown written by other people. Keep its scope small and its expiry short. Note also that a classic token has no read-only private scope — it carries write access to everything you can reach, which is why it is the least good option despite being the one that needs nobody's permission.
 
 ## Build target
 
@@ -63,6 +106,14 @@ external requests. GitHub fetching works wherever the network isn't sandboxed
 CI/CD lives in [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml): every push to
 `main` installs, lints, tests, builds, and deploys `dist/` to **Cloudflare Pages**
 (project `readmark` → `https://readmark.pages.dev`).
+
+Pull-request sign-in additionally needs a GitHub App (permissions **Contents: read** and **Pull requests: read**, callback `https://<origin>/api/auth/callback`) and two encrypted Pages environment variables, `GH_CLIENT_ID` and `GH_CLIENT_SECRET`. Without them the app still runs — reading and pasting work as before, and pull requests fall back to a pasted token.
+
+Run the Functions locally with:
+
+```bash
+wrangler pages dev --proxy 5173 -- bun run dev
+```
 
 Requires two repository secrets (Settings → Secrets → Actions):
 
