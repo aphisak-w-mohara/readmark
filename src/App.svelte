@@ -17,6 +17,7 @@
   import type { Scope } from "./state.svelte";
 
   let stageEl = $state<HTMLElement>();
+  let diffView = $state<DiffView>();
   let articleEl = $state<HTMLElement>();
 
   let progress = $state(0);
@@ -258,10 +259,24 @@
     if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
     if (e.key === "j") stepChange(1);
     else if (e.key === "k") stepChange(-1);
+    // `c` comments on the change the cursor is already on, rather than
+    // re-deriving "what am I looking at" from layout reads.
+    else if (e.key === "c") {
+      const row = changeRows()[changeIndex];
+      if (row) {
+        e.preventDefault();
+        diffView?.openComment(row);
+      }
+    }
   }
 
   // Nothing to step between when every block is a change: a wholly new or
   // deleted file is read straight through.
+  /** The rows `j`/`k` step through, in the same order. */
+  function changeRows() {
+    return store.diff && !store.diff.whole ? store.diff.rows.filter((r) => r.op !== "same") : [];
+  }
+
   const changeCount = $derived(
     store.diff && !store.diff.whole ? store.diff.rows.filter((r) => r.op !== "same").length : 0,
   );
@@ -354,6 +369,7 @@
         >
           {#if store.mode === "diff" && store.diff}
             <DiffView
+              bind:this={diffView}
               diff={store.diff}
               layout={store.layout}
               scope={store.scope}

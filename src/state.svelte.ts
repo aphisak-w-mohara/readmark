@@ -5,7 +5,6 @@
  * work to the pure core (prefs validation/persistence, markdown rendering,
  * highlighting, diffing). The core never imports Svelte.
  */
-import DOMPurify from "dompurify";
 import { loadPrefs, savePrefs, type Prefs, type StorageLike } from "./core/prefs";
 import { toHtml, type Rendered } from "./core/markdown";
 import { toDiffHtml, type DiffDoc } from "./core/diff";
@@ -31,14 +30,9 @@ import {
 } from "./core/pr";
 import { clearToken, loadToken, saveToken, type TokenStore, type TokenStores } from "./core/token";
 import { parsePatch } from "./core/patch";
-import {
-  putComment,
-  removeComment,
-  type Anchor,
-  type DraftComment,
-  type ReviewEvent,
-} from "./core/review";
+import { putComment, type Anchor, type DraftComment, type ReviewEvent } from "./core/review";
 import { makeGhFetch, probeSession, SIGN_IN_ENABLED, type Auth } from "./lib/gh";
+import { clean } from "./lib/render";
 
 const memory: StorageLike = (() => {
   const m = new Map<string, string>();
@@ -59,9 +53,6 @@ const tokenStores: TokenStores = {
   session: typeof sessionStorage !== "undefined" ? sessionStorage : memoryToken(),
   local: typeof localStorage !== "undefined" ? localStorage : memoryToken(),
 };
-
-/** Sanitize once, in one place: the parser deliberately passes raw HTML through. */
-const clean = (html: string) => DOMPurify.sanitize(html, { ADD_ATTR: ["target", "loading"] });
 
 export type Layout = "unified" | "split";
 export type Scope = "all" | "changed";
@@ -305,8 +296,7 @@ class ReadmarkStore {
 
   /** The commit a comment written now should attach to. */
   private get headSha(): string | null {
-    const s = this.shas;
-    return s ? s.head : null;
+    return this.shas?.head ?? null;
   }
 
   /** Write, edit, or (with an empty body) drop a comment on one anchor. */
@@ -315,12 +305,6 @@ class ReadmarkStore {
     if (!path) return;
     this.draft = putComment(this.draft, path, anchor, body);
     this.reviewError = null;
-  }
-
-  dropComment(anchor: Anchor) {
-    const path = this.activeFile?.filename;
-    if (!path) return;
-    this.draft = removeComment(this.draft, path, anchor);
   }
 
   /** Send the whole review. Keeps the draft if GitHub refuses it. */

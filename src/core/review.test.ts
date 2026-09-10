@@ -2,11 +2,10 @@ import { test, expect, describe } from "bun:test";
 import {
   putComment,
   commentAt,
-  removeComment,
   anchorKey,
   reviewPayload,
   commentPayload,
-  whyNotSubmittable,
+  canSubmit,
   type DraftComment,
 } from "./review";
 
@@ -59,10 +58,10 @@ describe("the draft", () => {
     expect(anchorKey("a.md", R(9, 4))).toBe(anchorKey("a.md", R(9)));
   });
 
-  test("removeComment takes only the one", () => {
+  test("clearing one comment leaves the others", () => {
     let d = putComment([], "a.md", R(3), "one");
     d = putComment(d, "a.md", R(9), "two");
-    expect(removeComment(d, "a.md", R(3))).toHaveLength(1);
+    expect(putComment(d, "a.md", R(3), "")).toHaveLength(1);
   });
 });
 
@@ -121,16 +120,16 @@ describe("the review payload", () => {
 
 describe("whether it can be sent", () => {
   test("approving needs no summary", () => {
-    expect(whyNotSubmittable("APPROVE", "")).toBeNull();
+    expect(canSubmit("APPROVE", "")).toBe(true);
   });
 
   test("commenting and requesting changes both need one", () => {
-    expect(whyNotSubmittable("COMMENT", "  ")).toContain("summary");
-    expect(whyNotSubmittable("REQUEST_CHANGES", "")).toContain("summary");
+    expect(canSubmit("COMMENT", "  ")).toBe(false);
+    expect(canSubmit("REQUEST_CHANGES", "")).toBe(false);
   });
 
   test("with a summary, both are fine", () => {
-    expect(whyNotSubmittable("COMMENT", "looks good")).toBeNull();
-    expect(whyNotSubmittable("REQUEST_CHANGES", "please fix")).toBeNull();
+    expect(canSubmit("COMMENT", "looks good")).toBe(true);
+    expect(canSubmit("REQUEST_CHANGES", "please fix")).toBe(true);
   });
 });

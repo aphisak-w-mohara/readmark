@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { whyNotSubmittable, type ReviewEvent } from "../core/review";
+  import { canSubmit, type ReviewEvent } from "../core/review";
 
   interface Props {
     count: number;
@@ -14,20 +14,17 @@
   let event = $state<ReviewEvent | null>(null);
   let summary = $state("");
 
-  // Approving needs no summary; the other two do, so they open the field
-  // rather than being refused by GitHub after the round trip.
-  const blocked = $derived(event ? whyNotSubmittable(event, summary) : null);
+  const ready = $derived(event ? canSubmit(event, summary) : false);
 
+  // Approving needs no summary, so it sends straight away; the other two
+  // open the field GitHub requires them to fill.
   function choose(e: ReviewEvent) {
-    if (e === "APPROVE" && !summary.trim()) {
-      onSubmit(e, "");
-      return;
-    }
-    event = event === e ? null : e;
+    if (e === "APPROVE") onSubmit(e, "");
+    else event = e;
   }
 
   function send() {
-    if (!event || blocked) return;
+    if (!event || !ready) return;
     onSubmit(event, summary);
     event = null;
     summary = "";
@@ -55,7 +52,7 @@
           : "A line about this review"}
         onkeydown={(e) => e.key === "Enter" && send()}
       />
-      <button class="rv-btn primary" onclick={send} disabled={Boolean(blocked) || busy}>
+      <button class="rv-btn primary" onclick={send} disabled={!ready || busy}>
         {busy ? "Sending…" : event === "REQUEST_CHANGES" ? "Request changes" : "Comment"}
       </button>
       <button class="rv-btn" onclick={() => (event = null)}>Cancel</button>

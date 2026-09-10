@@ -11,6 +11,15 @@
  * Pure: a patch string in, two sets of line numbers out.
  */
 
+export type Side = "RIGHT" | "LEFT";
+
+/** Where a review comment lands: one line, or a span ending at `line`. */
+export interface Anchor {
+  side: Side;
+  line: number;
+  startLine?: number;
+}
+
 export interface Commentable {
   /** Lines of the head file that accept a comment (added and context). */
   right: Set<number>;
@@ -71,18 +80,18 @@ export function parsePatch(patch: string | undefined | null): Commentable {
  */
 export function anchorFor(
   commentable: Commentable,
-  side: "RIGHT" | "LEFT",
+  side: Side,
   start: number,
   end: number,
-): { side: "RIGHT" | "LEFT"; line: number; startLine?: number } | null {
+): Anchor | null {
   const lines = side === "RIGHT" ? commentable.right : commentable.left;
-  let first = 0;
+  let first: number | undefined;
   let last = 0;
   for (let n = start; n <= end; n++) {
     if (!lines.has(n)) continue;
-    if (!first) first = n;
+    first ??= n;
     last = n;
   }
-  if (!first) return null;
+  if (first === undefined) return null;
   return first === last ? { side, line: last } : { side, line: last, startLine: first };
 }

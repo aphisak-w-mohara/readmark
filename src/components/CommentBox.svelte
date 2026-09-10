@@ -1,8 +1,6 @@
 <script lang="ts">
   import { untrack } from "svelte";
-  import { toHtml } from "../core/markdown";
-  import { highlight } from "../core/highlight";
-  import DOMPurify from "dompurify";
+  import { renderMd } from "../lib/render";
   import type { Anchor } from "../core/review";
 
   interface Props {
@@ -36,11 +34,7 @@
 
   // Previewed through the app's own pipeline, so a comment looks the way
   // the document does rather than the way a form does.
-  const preview = $derived(
-    text.trim()
-      ? DOMPurify.sanitize(toHtml(text, { highlight }).html, { ADD_ATTR: ["target", "loading"] })
-      : "",
-  );
+  const preview = $derived(text.trim() ? renderMd(text) : "");
 
   function key(e: KeyboardEvent) {
     if (e.key === "Escape") {

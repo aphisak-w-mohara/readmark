@@ -27,38 +27,23 @@
     onPostNow,
   }: Props = $props();
 
-  /** Which anchor has the editor open, by key; only ever one at a time. */
-  let openKey = $state<string | null>(null);
+  /** Which row has the editor open; row objects are stable within a diff. */
+  let openRow = $state<DiffRow | null>(null);
 
-  const keyOf = (a: Anchor) => (path ? anchorKey(path, a) : "");
-  const bodyAt = (a: Anchor) =>
-    path ? (draft.find((c) => anchorKey(c.path, c) === anchorKey(path, a))?.body ?? "") : "";
-  const hasComment = (a: Anchor | null) => Boolean(a && bodyAt(a));
+  // Built once per draft change rather than scanned per row per render.
+  const bodies = $derived(new Map(draft.map((c) => [anchorKey(c.path, c), c.body])));
+  const bodyAt = (a: Anchor) => (path ? (bodies.get(anchorKey(path, a)) ?? "") : "");
 
-  // A different document means the editor's anchor no longer exists.
+  // A different document means the editor's row no longer exists.
   $effect(() => {
     // oxlint-disable-next-line no-unused-expressions -- track the document
     diff;
-    openKey = null;
+    openRow = null;
   });
 
-  /**
-   * `c` comments on what you are looking at: the first commentable block
-   * showing in the stage. Self-contained here — the alternative is
-   * plumbing the change cursor down from App for one keystroke.
-   */
-  function onKey(e: KeyboardEvent) {
-    if (e.key !== "c" || e.metaKey || e.ctrlKey || e.altKey) return;
-    const t = e.target as HTMLElement | null;
-    if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
-    if (!path || !onSave || openKey) return;
-    const btn = [...document.querySelectorAll<HTMLElement>(".diff-add")].find((el) => {
-      const r = el.getBoundingClientRect();
-      return r.top >= 0 && r.top < window.innerHeight * 0.8;
-    });
-    if (!btn) return;
-    e.preventDefault();
-    btn.click();
+  /** Opened from here and from App's `c` shortcut, which owns the keymap. */
+  export function openComment(row: DiffRow) {
+    if (row.anchor && path && onSave) openRow = row;
   }
 
   /** Runs of untouched blocks collapse into one spacer the reader can open. */
@@ -126,7 +111,40 @@
   <p class="diff-banner" data-whole={diff.whole}>{banner}</p>
 {/if}
 
-<svelte:window onkeydown={onKey} />
+{#snippet commentSlot(row: DiffRow, html: string)}
+  {@const a = path && onSave ? row.anchor : null}
+  {#if a}
+    {@const has = Boolean(bodyAt(a))}
+    <button
+      class="diff-add"
+      class:has
+      title={has ? "Edit your comment" : "Comment on this block"}
+      aria-label={has ? "Edit your comment" : "Comment on this block"}
+      onclick={() => (openRow = openRow === row ? null : row)}
+    >
+      {has ? "●" : "+"}
+    </button>
+  {/if}
+  {@html html}
+  {#if a && path && onSave && openRow === row}
+    <CommentBox
+      anchor={a}
+      {path}
+      body={bodyAt(a)}
+      hasDraft={draft.length > 0}
+      {busy}
+      onSave={(b) => {
+        onSave(a, b);
+        openRow = null;
+      }}
+      onPostNow={(b) => {
+        onPostNow?.(a, b);
+        openRow = null;
+      }}
+      onCancel={() => (openRow = null)}
+    />
+  {/if}
+{/snippet}
 
 {#if diff.whole}
   {#each diff.rows as row, i (i)}
@@ -146,38 +164,7 @@
       {/if}
     {:else}
       <div class="diff-row" data-op={item.row.op} data-marked={item.row.marked}>
-        {#if item.row.anchor && path && onSave}
-          {@const a = item.row.anchor}
-          <button
-            class="diff-add"
-            class:has={hasComment(a)}
-            title={hasComment(a) ? "Edit your comment" : "Comment on this block"}
-            aria-label={hasComment(a) ? "Edit your comment" : "Comment on this block"}
-            onclick={() => (openKey = openKey === keyOf(a) ? null : keyOf(a))}
-          >
-            {hasComment(a) ? "●" : "+"}
-          </button>
-        {/if}
-        {@html item.row.unified}
-        {#if item.row.anchor && path && onSave && openKey === keyOf(item.row.anchor)}
-          {@const a = item.row.anchor}
-          <CommentBox
-            anchor={a}
-            {path}
-            body={bodyAt(a)}
-            hasDraft={draft.length > 0}
-            {busy}
-            onSave={(b) => {
-              onSave(a, b);
-              openKey = null;
-            }}
-            onPostNow={(b) => {
-              onPostNow?.(a, b);
-              openKey = null;
-            }}
-            onCancel={() => (openKey = null)}
-          />
-        {/if}
+        {@render commentSlot(item.row, item.row.unified)}
       </div>
     {/if}
   {/each}
@@ -202,12 +189,17 @@
         {/if}
       {:else}
         <div class="diff-side is-before" data-op={item.row.op === "added" ? "absent" : item.row.op}>
-          {#if item.row.op === "added"}<span class="diff-absent">—</span>{:else}{@html item.row
-              .before}{/if}
+          {#if item.row.op === "added"}<span class="diff-absent">—</span>
+          {:else if item.row.op === "removed"}
+            <!-- A removed block only exists here, so its comment belongs here too. -->
+            {@render commentSlot(item.row, item.row.before)}
+          {:else}{@html item.row.before}{/if}
         </div>
         <div class="diff-side is-after" data-op={item.row.op === "removed" ? "absent" : item.row.op}>
-          {#if item.row.op === "removed"}<span class="diff-absent">—</span>{:else}{@html item.row
-              .after}{/if}
+          {#if item.row.op === "removed"}<span class="diff-absent">—</span>{:else}{@render commentSlot(
+              item.row,
+              item.row.after,
+            )}{/if}
         </div>
       {/if}
     {/each}

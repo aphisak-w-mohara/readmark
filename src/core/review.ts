@@ -10,13 +10,9 @@
  * layer turns `reviewPayload` into a request.
  */
 
-export type Side = "RIGHT" | "LEFT";
+import type { Anchor, Side } from "./patch";
 
-export interface Anchor {
-  side: Side;
-  line: number;
-  startLine?: number;
-}
+export type { Anchor, Side };
 
 export interface DraftComment extends Anchor {
   path: string;
@@ -55,11 +51,6 @@ export function commentAt(
   return draft.find((c) => anchorKey(c.path, c) === key) ?? null;
 }
 
-export function removeComment(draft: DraftComment[], path: string, anchor: Anchor): DraftComment[] {
-  const key = anchorKey(path, anchor);
-  return draft.filter((c) => anchorKey(c.path, c) !== key);
-}
-
 interface WireComment {
   path: string;
   line: number;
@@ -86,15 +77,11 @@ export interface ReviewPayload {
 }
 
 /**
- * Why a review cannot be sent yet, or null when it can. GitHub requires a
- * summary for anything but an approval; saying so here beats letting the
- * API reject it after the round trip.
+ * GitHub requires a summary for anything but an approval. Checked here so
+ * the button is refused before the round trip rather than after it.
  */
-export function whyNotSubmittable(event: ReviewEvent, summary: string): string | null {
-  if (event === "APPROVE" || summary.trim()) return null;
-  return event === "COMMENT"
-    ? "A comment review needs a summary."
-    : "Requesting changes needs a summary saying what to change.";
+export function canSubmit(event: ReviewEvent, summary: string): boolean {
+  return event === "APPROVE" || Boolean(summary.trim());
 }
 
 /** The body for POST /pulls/{n}/reviews. */

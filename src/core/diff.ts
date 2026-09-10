@@ -13,7 +13,7 @@
 import { splitBlocks, stripMarks, MARK, type Block, type BlockKind } from "./blocks";
 import { align, type Change } from "./align";
 import { renderBlockList, stripRefDefs, type Heading, type MarkdownOptions } from "./markdown";
-import { anchorFor, type Commentable } from "./patch";
+import { anchorFor, type Anchor, type Commentable } from "./patch";
 
 const { delOpen: DEL_OPEN, delClose: DEL_CLOSE, insOpen: INS_OPEN, insClose: INS_CLOSE } = MARK;
 
@@ -148,13 +148,11 @@ export interface DiffRow {
   marked: boolean;
   /** Source line the row points at, on whichever side it exists. */
   line: number;
-  /** How many source lines the block spans. */
-  lines: number;
   /**
    * Where a review comment on this block would go, or null when the diff
    * does not show these lines and GitHub would refuse one.
    */
-  anchor: { side: "RIGHT" | "LEFT"; line: number; startLine?: number } | null;
+  anchor: Anchor | null;
 }
 
 export interface DiffDoc {
@@ -235,7 +233,6 @@ export function toDiffHtml(before: string, after: string, opts: DiffOptions = {}
 
   const rows: DiffRow[] = changes.map((c, i) => {
     const block = c.op === "removed" ? c.before : c.after;
-    const lines = block.src.split("\n").length;
     // A removed block only exists on the base side, so that is the only
     // side a comment about it can hang on.
     const side = c.op === "removed" ? "LEFT" : "RIGHT";
@@ -249,11 +246,16 @@ export function toDiffHtml(before: string, after: string, opts: DiffOptions = {}
       after: sentinelsToTags(aft.html[i]),
       marked: marked[i],
       line: block.line,
-      lines,
       anchor:
         c.op === "same" || !opts.commentable
           ? null
-          : anchorFor(opts.commentable, side, block.line, block.line + lines - 1),
+          : // Only counted where it is used: most rows are unchanged.
+            anchorFor(
+              opts.commentable,
+              side,
+              block.line,
+              block.line + block.src.split("\n").length - 1,
+            ),
     };
   });
 

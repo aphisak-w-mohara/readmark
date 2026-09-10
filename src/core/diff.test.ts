@@ -305,12 +305,6 @@ describe("comment anchors", () => {
       commentable: c,
     });
     const changed = d.rows.find((r) => r.op === "changed");
-    expect(changed?.lines).toBe(2);
     expect(changed?.anchor).toEqual({ side: "RIGHT", line: 4, startLine: 3 });
-  });
-
-  test("rows report how many source lines they span", () => {
-    const d = toDiffHtml("a\n\nb\nc\nd", "a\n\nb\nc\nd");
-    expect(d.rows.map((r) => r.lines)).toEqual([1, 3]);
   });
 });
