@@ -150,4 +150,5 @@ The submit calls themselves are exercised through the injected `FetchLike`, asse
 - **Drafts are lost on reload.** Stated above.
 - **One comment per anchor.** Two remarks about the same paragraph must be one comment. GitHub allows several; keying by anchor is what makes editing simple.
 - **No reply, no resolve, no sight of existing threads.** Phase 3 — until then you are writing without seeing what others already said, which is a real limitation for a second-round review.
+- **The comment affordance is hover-only, by decision.** The `+` stays invisible until the row is hovered or the button is focused, which keeps the reading surface quiet at the cost of discoverability: nothing announces that commenting exists, and a touch device has no hover to offer. `c` is the non-pointer route. Revisit if the reader is used on a tablet for review rather than reading.
 - **A stale anchor is only discovered at submit.** The diff is a snapshot; if someone pushes while you read, GitHub rejects the anchor and the 422 path handles it.
