@@ -271,12 +271,12 @@
   }
 
   /**
-   * The changed rows, in document order. A wholly new or deleted file has
-   * nothing to step between — every block is a change — so it yields none.
+   * The rows `j`/`k` step through and `c` comments on, in document order.
+   * A wholly new or deleted file has no untouched rows to exclude, so it
+   * yields all of them — every block there takes a comment, and the
+   * keyboard should reach what the mouse can.
    */
-  const changeRows = $derived(
-    store.diff && !store.diff.whole ? store.diff.rows.filter((r) => r.op !== "same") : [],
-  );
+  const changeRows = $derived(store.diff ? store.diff.rows.filter((r) => r.op !== "same") : []);
   const changeCount = $derived(changeRows.length);
 
   // How many commits the current range covers; 0 means the whole PR.

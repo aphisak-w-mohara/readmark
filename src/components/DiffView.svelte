@@ -2,6 +2,7 @@
   import type { DiffDoc, DiffRow } from "../core/diff";
   import type { Layout, Scope } from "../state.svelte";
   import type { Anchor, DraftComment } from "../core/review";
+  import type { Side } from "../core/patch";
   import { anchorKey } from "../core/review";
   import CommentBox from "./CommentBox.svelte";
 
@@ -112,8 +113,13 @@
   </button>
 {/snippet}
 
-{#snippet commentSlot(row: DiffRow, html: string)}
-  {@const a = path && onSave ? row.anchor : null}
+<!--
+  The one place a block's HTML is rendered. Passing the side it is being
+  drawn on keeps the affordance on the column the anchor actually lives
+  in, and means a new branch cannot show content without it.
+-->
+{#snippet commentSlot(row: DiffRow, html: string, side?: Side)}
+  {@const a = path && onSave && (!side || row.anchor?.side === side) ? row.anchor : null}
   {#if a}
     {@const has = Boolean(bodyAt(a))}
     <button
@@ -149,19 +155,15 @@
 
 {#if diff.whole}
   {#each diff.rows as row, i (i)}
-    <!-- No washes here (every block is a change, so marking them says
-         nothing) but the blocks are still in the diff, so they can still
-         carry a comment. -->
-    <div class="diff-row">
-      {@render commentSlot(row, diff.whole === "removed" ? row.before : row.after)}
-    </div>
+    <!-- The blocks are still in the diff, so they still carry comments. -->
+    <div class="diff-row">{@render commentSlot(row, row.unified)}</div>
   {/each}
 {:else if layout === "unified"}
   {#each items as item (itemKey(item))}
     {#if item.kind === "fold"}
       {#if opened.has(item.from)}
         {#each item.rows as row, i (i)}
-          <div class="diff-row" data-op="same">{@html row.unified}</div>
+          <div class="diff-row" data-op="same">{@render commentSlot(row, row.unified)}</div>
         {/each}
       {:else}
         {@render foldBtn(item, false)}
@@ -180,8 +182,12 @@
       {#if item.kind === "fold"}
         {#if opened.has(item.from)}
           {#each item.rows as row, i (i)}
-            <div class="diff-side is-before" data-op="same">{@html row.before}</div>
-            <div class="diff-side is-after" data-op="same">{@html row.after}</div>
+            <div class="diff-side is-before" data-op="same">
+              {@render commentSlot(row, row.before, "LEFT")}
+            </div>
+            <div class="diff-side is-after" data-op="same">
+              {@render commentSlot(row, row.after, "RIGHT")}
+            </div>
           {/each}
         {:else}
           {@render foldBtn(item, true)}
@@ -189,16 +195,11 @@
       {:else}
         <div class="diff-side is-before" data-op={item.row.op === "added" ? "absent" : item.row.op}>
           {#if item.row.op === "added"}<span class="diff-absent">—</span>
-          {:else if item.row.op === "removed"}
-            <!-- A removed block only exists here, so its comment belongs here too. -->
-            {@render commentSlot(item.row, item.row.before)}
-          {:else}{@html item.row.before}{/if}
+          {:else}{@render commentSlot(item.row, item.row.before, "LEFT")}{/if}
         </div>
         <div class="diff-side is-after" data-op={item.row.op === "removed" ? "absent" : item.row.op}>
-          {#if item.row.op === "removed"}<span class="diff-absent">—</span>{:else}{@render commentSlot(
-              item.row,
-              item.row.after,
-            )}{/if}
+          {#if item.row.op === "removed"}<span class="diff-absent">—</span>
+          {:else}{@render commentSlot(item.row, item.row.after, "RIGHT")}{/if}
         </div>
       {/if}
     {/each}

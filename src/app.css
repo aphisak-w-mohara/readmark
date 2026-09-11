@@ -1963,13 +1963,22 @@ a#docTitle:hover .pr-subject {
     color 0.12s,
     border-color 0.12s;
 }
-.diff-row {
+/* Both row shapes anchor the affordance: a split cell is the row, so
+   without this the button positions against a distant ancestor and lands
+   off the page entirely. */
+.diff-row,
+.diff-side {
   position: relative;
 }
 .diff-row:hover .diff-add,
+.diff-side:hover .diff-add,
 .diff-add:focus-visible,
 .diff-add.has {
   opacity: 1;
+}
+/* The split columns have less margin to spare than the single column. */
+.diff-split .diff-add {
+  left: -26px;
 }
 .diff-add:hover {
   color: var(--ink);
