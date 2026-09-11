@@ -58,35 +58,33 @@ const wire = (c: DraftComment): WireComment => ({
   body: c.body,
 });
 
-export interface ReviewPayload {
+export interface PendingPayload {
   commit_id: string;
-  event: ReviewEvent;
-  body?: string;
   comments: WireComment[];
 }
 
-/**
- * GitHub requires a summary for anything but an approval. Checked here so
- * the button is refused before the round trip rather than after it.
- */
-export function canSubmit(event: ReviewEvent, summary: string): boolean {
-  return event === "APPROVE" || Boolean(summary.trim());
+export interface SubmitPayload {
+  event: ReviewEvent;
+  body?: string;
 }
 
-/** The body for POST /pulls/{n}/reviews. */
-export function reviewPayload(
-  commitId: string,
-  event: ReviewEvent,
-  summary: string,
-  draft: DraftComment[],
-): ReviewPayload {
+/**
+ * The body for POST /pulls/{n}/reviews with no event: a pending review,
+ * holding the comments and nothing else.
+ *
+ * Creating and submitting are separate calls because a one-shot COMMENT
+ * or REQUEST_CHANGES review must carry a summary, while submitting one
+ * that already exists need not — which is how GitHub's own UI lets you
+ * send inline comments with nothing further to say.
+ */
+export function pendingPayload(commitId: string, draft: DraftComment[]): PendingPayload {
+  return { commit_id: commitId, comments: draft.map(wire) };
+}
+
+/** The body for POST /pulls/{n}/reviews/{id}/events — the verdict. */
+export function submitPayload(event: ReviewEvent, summary: string): SubmitPayload {
   const body = summary.trim();
-  return {
-    commit_id: commitId,
-    event,
-    ...(body ? { body } : {}),
-    comments: draft.map(wire),
-  };
+  return { event, ...(body ? { body } : {}) };
 }
 
 /** The body for POST /pulls/{n}/comments — one comment, sent on its own. */

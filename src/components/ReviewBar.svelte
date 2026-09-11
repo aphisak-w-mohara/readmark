@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { canSubmit, type ReviewEvent } from "../core/review";
+  import type { ReviewEvent } from "../core/review";
 
   interface Props {
     count: number;
@@ -16,8 +16,6 @@
   let event = $state<ReviewEvent | null>(null);
   let summary = $state("");
 
-  const ready = $derived(event ? canSubmit(event, summary) : false);
-
   // Approving needs no summary, so it sends straight away; the other two
   // open the field GitHub requires them to fill.
   function choose(e: ReviewEvent) {
@@ -26,7 +24,7 @@
   }
 
   function send() {
-    if (!event || !ready) return;
+    if (!event) return;
     onSubmit(event, summary);
     event = null;
     summary = "";
@@ -50,11 +48,11 @@
         class="rv-summary"
         bind:value={summary}
         placeholder={event === "REQUEST_CHANGES"
-          ? "What needs to change?"
-          : "A line about this review"}
+          ? "What needs to change? (optional)"
+          : "A line about this review (optional)"}
         onkeydown={(e) => e.key === "Enter" && send()}
       />
-      <button class="rv-btn primary" onclick={send} disabled={!ready || busy}>
+      <button class="rv-btn primary" onclick={send} disabled={busy}>
         {busy ? "Sending…" : event === "REQUEST_CHANGES" ? "Request changes" : "Comment"}
       </button>
       <button class="rv-btn" onclick={() => (event = null)}>Cancel</button>

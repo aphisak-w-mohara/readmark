@@ -402,16 +402,77 @@ describe("writing a review", () => {
     return { fn, sent };
   }
 
-  test("a review POSTs the whole draft with the commit read", async () => {
+  test("a review parks the draft, then passes the verdict", async () => {
     const { fn, sent } = recorder();
     await submitReview(ref, "headsha", "APPROVE", "", draft, fn);
+
     expect(sent[0].url).toBe("/repos/o/r/pulls/42/reviews");
     expect(sent[0].method).toBe("POST");
     expect(sent[0].body).toEqual({
       commit_id: "headsha",
-      event: "APPROVE",
       comments: [{ path: "a.md", line: 3, side: "RIGHT", body: "a note" }],
     });
+
+    expect(sent[1].url).toBe("/repos/o/r/pulls/42/reviews/1/events");
+    expect(sent[1].body).toEqual({ event: "APPROVE" });
+  });
+
+  /**
+   * The point of the two calls: a one-shot COMMENT review is refused
+   * without a summary, so sending the comments first is what lets the
+   * field stay empty.
+   */
+  test("commenting with no summary sends no body", async () => {
+    const { fn, sent } = recorder();
+    await submitReview(ref, "h", "COMMENT", "   ", draft, fn);
+    expect(sent[1].body).toEqual({ event: "COMMENT" });
+  });
+
+  test("a summary rides on the verdict, not on the comments", async () => {
+    const { fn, sent } = recorder();
+    await submitReview(ref, "h", "REQUEST_CHANGES", "please fix", draft, fn);
+    expect(sent[0].body).not.toHaveProperty("body");
+    expect(sent[1].body).toEqual({ event: "REQUEST_CHANGES", body: "please fix" });
+  });
+
+  /**
+   * A pending review is invisible on the pull request but real. Left
+   * behind by a failed verdict, the next attempt would park a second
+   * copy of every comment on top of it.
+   */
+  test("a verdict that fails takes its pending review with it", async () => {
+    const sent: { url: string; method?: string }[] = [];
+    const fn: FetchLike = async (url, init) => {
+      sent.push({ url, method: init?.method });
+      const failing = url.endsWith("/events");
+      return {
+        ok: !failing,
+        status: failing ? 422 : 200,
+        text: async () =>
+          failing
+            ? '{"message":"x","errors":["Can not approve your own pull request"]}'
+            : '{"id":7}',
+      };
+    };
+    expect(submitReview(ref, "h", "APPROVE", "", draft, fn)).rejects.toThrow(
+      /Can not approve your own pull request/,
+    );
+    await new Promise((r) => setTimeout(r, 0));
+    expect(sent.map((s) => `${s.method ?? "POST"} ${s.url}`)).toEqual([
+      "POST /repos/o/r/pulls/42/reviews",
+      "POST /repos/o/r/pulls/42/reviews/7/events",
+      "DELETE /repos/o/r/pulls/42/reviews/7",
+    ]);
+  });
+
+  test("cleanup failing does not replace the real error", async () => {
+    const fn: FetchLike = async (url) => {
+      if (url.endsWith("/events"))
+        return { ok: false, status: 422, text: async () => '{"message":"the real reason"}' };
+      if (url.endsWith("/reviews/7")) throw new Error("delete blew up");
+      return { ok: true, status: 200, text: async () => '{"id":7}' };
+    };
+    expect(submitReview(ref, "h", "APPROVE", "", draft, fn)).rejects.toThrow(/the real reason/);
   });
 
   test("a single comment goes to the comments endpoint", async () => {

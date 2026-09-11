@@ -2,9 +2,9 @@ import { test, expect, describe } from "bun:test";
 import {
   putComment,
   anchorKey,
-  reviewPayload,
+  pendingPayload,
+  submitPayload,
   commentPayload,
-  canSubmit,
   type DraftComment,
 } from "./review";
 
@@ -64,16 +64,18 @@ describe("the review payload", () => {
     { path: "c.md", side: "LEFT", line: 2, body: "on the old side" },
   ];
 
-  test("carries the commit read, the event and every comment", () => {
-    const p = reviewPayload("headsha", "APPROVE", "", draft);
+  test("the pending review carries the commit read and every comment", () => {
+    const p = pendingPayload("headsha", draft);
     expect(p.commit_id).toBe("headsha");
-    expect(p.event).toBe("APPROVE");
     expect(p.comments).toHaveLength(3);
-    expect(p.body).toBeUndefined();
+    // No event and no body: this call only parks the comments. Sending
+    // them in one shot with a verdict is what would demand a summary.
+    expect(p).not.toHaveProperty("event");
+    expect(p).not.toHaveProperty("body");
   });
 
   test("start_line is sent only for a real range", () => {
-    const p = reviewPayload("h", "COMMENT", "summary", draft);
+    const p = pendingPayload("h", draft);
     expect(p.comments[0]).toEqual({ path: "a.md", line: 3, side: "RIGHT", body: "single" });
     expect(p.comments[1]).toEqual({
       path: "b.md",
@@ -86,14 +88,14 @@ describe("the review payload", () => {
   });
 
   test("a start equal to the line is not a range", () => {
-    const p = reviewPayload("h", "COMMENT", "s", [
+    const p = pendingPayload("h", [
       { path: "a.md", side: "RIGHT", line: 5, startLine: 5, body: "x" },
     ]);
     expect(p.comments[0].start_line).toBeUndefined();
   });
 
   test("start_side follows the comment's own side", () => {
-    const p = reviewPayload("h", "COMMENT", "s", [
+    const p = pendingPayload("h", [
       { path: "c.md", side: "LEFT", line: 8, startLine: 6, body: "x" },
     ]);
     expect(p.comments[0].start_side).toBe("LEFT");
@@ -110,18 +112,20 @@ describe("the review payload", () => {
   });
 });
 
-describe("whether it can be sent", () => {
-  test("approving needs no summary", () => {
-    expect(canSubmit("APPROVE", "")).toBe(true);
+describe("the verdict", () => {
+  // GitHub requires a summary on a one-shot COMMENT or REQUEST_CHANGES
+  // review. Submitting a review that already exists does not, so no
+  // event has to be refused for want of one.
+  test("an empty summary sends no body at all", () => {
+    for (const e of ["COMMENT", "REQUEST_CHANGES", "APPROVE"] as const) {
+      expect(submitPayload(e, "   ")).toEqual({ event: e });
+    }
   });
 
-  test("commenting and requesting changes both need one", () => {
-    expect(canSubmit("COMMENT", "  ")).toBe(false);
-    expect(canSubmit("REQUEST_CHANGES", "")).toBe(false);
-  });
-
-  test("with a summary, both are fine", () => {
-    expect(canSubmit("COMMENT", "looks good")).toBe(true);
-    expect(canSubmit("REQUEST_CHANGES", "please fix")).toBe(true);
+  test("a summary is trimmed and sent", () => {
+    expect(submitPayload("COMMENT", "  looks good  ")).toEqual({
+      event: "COMMENT",
+      body: "looks good",
+    });
   });
 });

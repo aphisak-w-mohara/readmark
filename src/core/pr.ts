@@ -10,7 +10,8 @@
 import { SourceError, type FetchLike } from "./source";
 import {
   commentPayload,
-  reviewPayload,
+  pendingPayload,
+  submitPayload,
   type Anchor,
   type DraftComment,
   type ReviewEvent,
@@ -417,7 +418,14 @@ async function post(fetchFn: FetchLike, path: string, body: unknown): Promise<un
   return text ? JSON.parse(text) : null;
 }
 
-/** Send the whole review — every drafted comment, and the verdict. */
+/**
+ * Send the whole review — every drafted comment, and the verdict.
+ *
+ * In two calls, because GitHub demands a summary on a one-shot COMMENT
+ * or REQUEST_CHANGES review but not on submitting a review that already
+ * exists. Creating the comments first and then passing the verdict is
+ * what lets the summary stay optional, as it is in GitHub's own UI.
+ */
 export async function submitReview(
   ref: PrRef,
   commitId: string,
@@ -426,12 +434,27 @@ export async function submitReview(
   draft: DraftComment[],
   fetchFn: FetchLike,
 ): Promise<{ id: number; html_url: string }> {
-  const out = await post(
-    fetchFn,
-    `/repos/${ref.owner}/${ref.repo}/pulls/${ref.number}/reviews`,
-    reviewPayload(commitId, event, summary, draft),
-  );
-  return out as { id: number; html_url: string };
+  const base = `/repos/${ref.owner}/${ref.repo}/pulls/${ref.number}/reviews`;
+  const pending = (await post(fetchFn, base, pendingPayload(commitId, draft))) as { id: number };
+  try {
+    const out = await post(fetchFn, `${base}/${pending.id}/events`, submitPayload(event, summary));
+    return out as { id: number; html_url: string };
+  } catch (err) {
+    // A pending review nobody submitted is invisible on the PR but real:
+    // left behind, the next attempt would stack a second copy of every
+    // comment on top of it.
+    await discard(fetchFn, `${base}/${pending.id}`);
+    throw err;
+  }
+}
+
+/** Best-effort cleanup: the caller is already reporting a failure. */
+async function discard(fetchFn: FetchLike, path: string): Promise<void> {
+  try {
+    await fetchFn(path, { method: "DELETE" });
+  } catch {
+    /* nothing useful to add to the error already being thrown */
+  }
 }
 
 /** Send one comment on its own, without opening a review. */
