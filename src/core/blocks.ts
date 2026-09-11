@@ -82,6 +82,39 @@ export function stripMarks(s: string): string {
 }
 
 const isBlank = (l: string) => /^\s*$/.test(l);
+
+/** Elements that never wrap content, so they cannot span a blank line. */
+const VOID = new Set(
+  "area base br col embed hr img input link meta param source track wbr".split(" "),
+);
+
+/**
+ * Where a raw HTML block ends. A container that wraps other content — a
+ * <details> around a table, say — routinely has blank lines inside it, and
+ * ending at the first one splits the element across blocks: the renderer
+ * then emits an opening tag and its contents as separate siblings, and the
+ * element silently stops working. So when the block opens a container and
+ * its closing tag exists ahead, the block runs to that tag; otherwise the
+ * old blank-line rule stands.
+ */
+function htmlBlockEnd(lines: string[], start: number): number {
+  const open = lines[start].match(/^\s*<([a-zA-Z][\w-]*)/);
+  const tag = open?.[1]?.toLowerCase();
+  if (tag && !VOID.has(tag) && !/\/>\s*$/.test(lines[start])) {
+    const openRe = new RegExp(`<${tag}(?=[\\s/>]|$)`, "gi");
+    const closeRe = new RegExp(`</${tag}\\s*>`, "gi");
+    let depth = 0;
+    for (let n = start; n < lines.length; n++) {
+      depth += (lines[n].match(openRe) ?? []).length;
+      depth -= (lines[n].match(closeRe) ?? []).length;
+      if (depth <= 0) return n + 1;
+    }
+    // Never closed: fall through rather than swallow the rest of the file.
+  }
+  let n = start;
+  while (n < lines.length && !isBlank(lines[n])) n++;
+  return n;
+}
 const LIST_ITEM = /^(\s*)([-+*]|\d+[.)])\s+/;
 const HTML_OPEN = /^\s*<(\/?[a-zA-Z][\w-]*|!--)/;
 
@@ -217,7 +250,8 @@ export function splitBlocks(src: string): Block[] {
 
     // raw HTML block
     if (HTML_OPEN.test(line) && !/^\s*<https?:/i.test(line)) {
-      while (i < lines.length && !isBlank(lines[i])) i++;
+      const end = htmlBlockEnd(lines, i);
+      i = end;
       push("html", start, i);
       continue;
     }

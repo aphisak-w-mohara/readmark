@@ -436,6 +436,8 @@ textarea {
 
 #stage {
   container: stage / inline-size;
+  /* Every jump into the document clears the bars above it. */
+  scroll-padding-top: 80px;
   flex: 1 1 auto;
   overflow-y: auto;
   background: var(--mat);
@@ -724,6 +726,8 @@ textarea {
 .md .mermaid svg {
   max-width: 100%;
   height: auto;
+  /* Must match the family mermaid measured with, or labels overflow. */
+  font-family: var(--ui);
 }
 .md .mermaid-src {
   width: 100%;

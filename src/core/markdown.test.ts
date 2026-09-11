@@ -145,3 +145,25 @@ describe("toHtml", () => {
     expect(toHtml("<b>bold html</b>").html).toContain("<b>bold html</b>");
   });
 });
+
+describe("markdown inside a container", () => {
+  test("a table inside <details> renders, and the element stays whole", () => {
+    const html = toHtml(
+      [
+        "<details>",
+        "<summary>More</summary>",
+        "",
+        "| a | b |",
+        "| - | - |",
+        "| 1 | 2 |",
+        "",
+        "</details>",
+      ].join("\n"),
+    ).html;
+    expect(html).toContain("<details>");
+    expect(html).toContain("<summary>More</summary>");
+    expect(html).toContain("<table>");
+    // the close tag must be in the same rendered fragment as the open
+    expect(html.indexOf("</details>")).toBeGreaterThan(html.indexOf("<table>"));
+  });
+});

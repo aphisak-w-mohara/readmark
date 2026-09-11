@@ -92,3 +92,47 @@ describe("helpers", () => {
     expect(normalize("  a\n\t b  ")).toBe("a b");
   });
 });
+
+describe("raw HTML containers", () => {
+  // Ending an HTML block at the first blank line splits <details> from its
+  // contents. Rendered as one row per block, the element then closes at the
+  // row boundary and the accordion never toggles.
+  const DETAILS = [
+    "<details>",
+    "<summary>Version history</summary>",
+    "",
+    "| Version | Date |",
+    "| --- | --- |",
+    "| 1.0 | today |",
+    "",
+    "</details>",
+  ].join("\n");
+
+  test("a container survives the blank lines inside it", () => {
+    const blocks = splitBlocks(DETAILS);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].kind).toBe("html");
+    expect(blocks[0].src).toContain("</details>");
+  });
+
+  test("nesting the same tag does not close early", () => {
+    const src = ["<div>", "<div>", "", "inner", "", "</div>", "", "tail", "</div>"].join("\n");
+    expect(splitBlocks(src)).toHaveLength(1);
+  });
+
+  test("an unclosed container falls back to the blank-line rule", () => {
+    const src = ["<div>", "dangling", "", "# A separate heading"].join("\n");
+    expect(splitBlocks(src).map((b) => b.kind)).toEqual(["html", "heading"]);
+  });
+
+  test("a void element is not treated as a container", () => {
+    expect(splitBlocks(["<hr/>", "", "after"].join("\n")).map((b) => b.kind)).toEqual([
+      "html",
+      "para",
+    ]);
+  });
+
+  test("a self-closing tag ends its own block", () => {
+    expect(splitBlocks(['<img src="a.png" />', "", "after"].join("\n"))).toHaveLength(2);
+  });
+});

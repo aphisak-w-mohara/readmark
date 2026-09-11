@@ -28,7 +28,6 @@
   let sourceOpen = $state(false);
   let commitsOpen = $state(false);
 
-  const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   // opening document
   store.load(SAMPLE);
@@ -63,11 +62,16 @@
     const blocks = [...articleEl.querySelectorAll<HTMLElement>(".mermaid")];
     if (!blocks.length) return;
     const mermaid = (await import("mermaid")).default;
+    // A concrete stack, not "inherit": mermaid sizes every node box by
+    // measuring its label in the configured font, so if that disagrees
+    // with what actually paints, long labels are clipped by their own box.
+    const ui =
+      getComputedStyle(articleEl).getPropertyValue("--ui").trim() || "system-ui, sans-serif";
     mermaid.initialize({
       startOnLoad: false,
       theme: dark ? "dark" : "neutral",
       securityLevel: "strict",
-      fontFamily: "inherit",
+      fontFamily: ui,
     });
     for (const el of blocks) {
       const code = el.dataset.src ?? el.querySelector(".mermaid-src")?.textContent ?? "";
@@ -189,30 +193,24 @@
   }
 
   /**
-   * Bring change `i` into view. Measured from bounding rects rather than
-   * offsetTop: a diff row's offsetParent is not the stage, so its
-   * offsetTop is in a different coordinate space and lands nowhere near.
+   * Scroll something into view. #stage is the only scroller, and it owns
+   * both the easing (scroll-behavior, with its own reduced-motion
+   * override) and the offset (scroll-padding-top) — so this needs no
+   * arithmetic and no matchMedia that would miss a later setting change.
    */
-  function scrollToChange(i: number) {
-    const els = changeEls();
-    const el = els[i];
-    if (!el || !stageEl) return;
-    const top =
-      stageEl.scrollTop + el.getBoundingClientRect().top - stageEl.getBoundingClientRect().top - 80;
-    stageEl.scrollTo({ top, behavior: reduceMotion ? "auto" : "smooth" });
+  function reveal(el: Element | null | undefined, block: ScrollLogicalPosition = "start") {
+    el?.scrollIntoView({ block });
   }
 
   function stepChange(delta: number) {
     const els = changeEls();
     if (!els.length) return;
     changeIndex = (changeIndex + delta + els.length) % els.length;
-    scrollToChange(changeIndex);
+    reveal(els[changeIndex]);
   }
 
   function jump(id: string) {
-    const el = document.getElementById(id);
-    if (!el || !stageEl) return;
-    stageEl.scrollTo({ top: el.offsetTop - 40, behavior: reduceMotion ? "auto" : "smooth" });
+    reveal(document.getElementById(id));
   }
 
   function onCopy(e: MouseEvent) {
@@ -275,9 +273,10 @@
       const row = changeRows[changeIndex];
       if (row) {
         e.preventDefault();
-        // The editor takes focus, so it has to be somewhere you can see:
-        // the cursor may be far off-screen when `c` is pressed.
-        scrollToChange(changeIndex);
+        // The editor takes focus, so it must be somewhere visible — but
+        // only move if it is not already: `c` is usually pressed on the
+        // block being read.
+        reveal(changeEls()[changeIndex], "nearest");
         diffView?.openComment(row);
       }
     }
