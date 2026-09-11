@@ -192,25 +192,17 @@
     ];
   }
 
-  /**
-   * Scroll something into view. #stage is the only scroller, and it owns
-   * both the easing (scroll-behavior, with its own reduced-motion
-   * override) and the offset (scroll-padding-top) — so this needs no
-   * arithmetic and no matchMedia that would miss a later setting change.
-   */
-  function reveal(el: Element | null | undefined, block: ScrollLogicalPosition = "start") {
-    el?.scrollIntoView({ block });
-  }
-
   function stepChange(delta: number) {
     const els = changeEls();
     if (!els.length) return;
     changeIndex = (changeIndex + delta + els.length) % els.length;
-    reveal(els[changeIndex]);
+    els[changeIndex]?.scrollIntoView();
   }
 
+  // #stage owns the easing (scroll-behavior, with its own reduced-motion
+  // override) and the offset (scroll-padding-top), so these need neither.
   function jump(id: string) {
-    reveal(document.getElementById(id));
+    document.getElementById(id)?.scrollIntoView();
   }
 
   function onCopy(e: MouseEvent) {
@@ -276,7 +268,7 @@
         // The editor takes focus, so it must be somewhere visible — but
         // only move if it is not already: `c` is usually pressed on the
         // block being read.
-        reveal(changeEls()[changeIndex], "nearest");
+        changeEls()[changeIndex]?.scrollIntoView({ block: "nearest" });
         diffView?.openComment(row);
       }
     }
