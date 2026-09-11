@@ -132,7 +132,27 @@ describe("raw HTML containers", () => {
     ]);
   });
 
-  test("a self-closing tag ends its own block", () => {
-    expect(splitBlocks(['<img src="a.png" />', "", "after"].join("\n"))).toHaveLength(2);
+  // hr and img are void, so they never reach the self-closing check; a
+  // non-void tag written self-closing is the only case it decides.
+  test("a self-closing non-void tag is not treated as a container", () => {
+    // A stray </span> later would balance it if the tag were treated as an
+    // opener, swallowing the paragraph between them into one block.
+    const src = ["<span />", "", "after", "", "</span>"].join("\n");
+    expect(splitBlocks(src).map((b) => b.kind)).toEqual(["html", "para", "html"]);
+  });
+
+  // A comment split at its first blank line never gets its "-->" back:
+  // the closer is escaped as text and the browser swallows every element
+  // after it, so commenting out one section blanks the rest of the page.
+  test("a multi-line comment is one block, up to its closer", () => {
+    const src = ["# Kept", "", "<!--", "## Old", "", "text", "-->", "", "# After"].join("\n");
+    const blocks = splitBlocks(src);
+    expect(blocks.map((b) => b.kind)).toEqual(["heading", "html", "heading"]);
+    expect(blocks[1].src).toBe("<!--\n## Old\n\ntext\n-->");
+  });
+
+  test("a one-line comment closes on its own line", () => {
+    const src = ["<!-- note -->", "", "after"].join("\n");
+    expect(splitBlocks(src).map((b) => b.kind)).toEqual(["html", "para"]);
   });
 });

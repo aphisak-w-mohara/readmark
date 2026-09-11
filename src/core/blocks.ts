@@ -89,28 +89,45 @@ const VOID = new Set(
 );
 
 /**
- * Where a raw HTML block ends. A container that wraps other content — a
- * <details> around a table, say — routinely has blank lines inside it, and
- * ending at the first one splits the element across blocks: the renderer
- * then emits an opening tag and its contents as separate siblings, and the
- * element silently stops working. So when the block opens a container and
- * its closing tag exists ahead, the block runs to that tag; otherwise the
- * old blank-line rule stands.
+ * Where the container opened at `start` closes, as an exclusive end index,
+ * or null when this is not a closed container.
+ *
+ * A container that wraps content — <details> around a table, say — has
+ * blank lines inside it, and ending the block at the first one splits the
+ * element apart: rendered a block at a time, the opening tag and its
+ * contents become siblings and the element silently stops working.
+ *
+ * One answer, asked twice: the splitter keeps the element in a single
+ * block, and the renderer uses it to know which lines are the contents.
+ * Two rules for one question drift, and the symptom is Markdown inside
+ * <details> quietly ceasing to render.
  */
-function htmlBlockEnd(lines: string[], start: number): number {
-  const open = lines[start].match(/^\s*<([a-zA-Z][\w-]*)/);
-  const tag = open?.[1]?.toLowerCase();
-  if (tag && !VOID.has(tag) && !/\/>\s*$/.test(lines[start])) {
-    const openRe = new RegExp(`<${tag}(?=[\\s/>]|$)`, "gi");
-    const closeRe = new RegExp(`</${tag}\\s*>`, "gi");
-    let depth = 0;
-    for (let n = start; n < lines.length; n++) {
-      depth += (lines[n].match(openRe) ?? []).length;
-      depth -= (lines[n].match(closeRe) ?? []).length;
-      if (depth <= 0) return n + 1;
-    }
-    // Never closed: fall through rather than swallow the rest of the file.
+export function containerEnd(lines: string[], start: number): number | null {
+  // A comment is a container too, and the worst one to split: an unclosed
+  // <!-- swallows every element after it, so commenting out a section
+  // blanks the rest of the document.
+  if (/^\s*<!--/.test(lines[start])) {
+    for (let n = start; n < lines.length; n++) if (lines[n].includes("-->")) return n + 1;
+    return null;
   }
+  const tag = lines[start]?.match(/^\s*<([a-zA-Z][\w-]*)/)?.[1]?.toLowerCase();
+  if (!tag || VOID.has(tag) || /\/>\s*$/.test(lines[start])) return null;
+  const openRe = new RegExp(`<${tag}(?=[\\s/>]|$)`, "gi");
+  const closeRe = new RegExp(`</${tag}\\s*>`, "gi");
+  let depth = 0;
+  for (let n = start; n < lines.length; n++) {
+    // Depth only moves on lines with a tag; skipping the rest keeps an
+    // unclosed opener from costing a full two-regex scan of every line.
+    if (!lines[n].includes("<")) continue;
+    depth += (lines[n].match(openRe) ?? []).length;
+    depth -= (lines[n].match(closeRe) ?? []).length;
+    if (depth <= 0) return n + 1;
+  }
+  return null; // never closed: the caller falls back rather than swallowing the file
+}
+
+/** Where a non-container raw HTML block ends: at the next blank line. */
+function blankEnd(lines: string[], start: number): number {
   let n = start;
   while (n < lines.length && !isBlank(lines[n])) n++;
   return n;
@@ -250,8 +267,7 @@ export function splitBlocks(src: string): Block[] {
 
     // raw HTML block
     if (HTML_OPEN.test(line) && !/^\s*<https?:/i.test(line)) {
-      const end = htmlBlockEnd(lines, i);
-      i = end;
+      i = containerEnd(lines, i) ?? blankEnd(lines, i);
       push("html", start, i);
       continue;
     }

@@ -7,7 +7,14 @@
  */
 import { escapeHtml, escapeAttr, safeUrl } from "./escape";
 import { makeSlugger } from "./slug";
-import { splitBlocks, fenceParts, stripInline, afterText, type Block } from "./blocks";
+import {
+  splitBlocks,
+  fenceParts,
+  stripInline,
+  afterText,
+  containerEnd,
+  type Block,
+} from "./blocks";
 
 export interface Heading {
   level: number;
@@ -272,9 +279,11 @@ function renderBlock(b: Block, ctx: Ctx): string {
       // still go through the parser, which is the whole point of writing
       // a table or a list inside <details>.
       const lines = b.src.split("\n");
-      const tag = lines[0].match(/^\s*<([a-zA-Z][\w-]*)/)?.[1];
-      const closed = tag && new RegExp(`</${tag}\\s*>\\s*$`, "i").test(lines[lines.length - 1]);
-      if (!tag || !closed || lines.length < 3) return b.src;
+      // A comment's body is not content: rendering it would turn commented
+      // -out markdown into live HTML that only a "-->" keeps hidden.
+      if (/^\s*<!--/.test(lines[0])) return b.src;
+      // The same answer the splitter used, not a second guess at it.
+      if (containerEnd(lines, 0) !== lines.length || lines.length < 3) return b.src;
       return `${lines[0]}\n${parseBlocks(lines.slice(1, -1).join("\n"), ctx)}\n${lines[lines.length - 1]}`;
     }
     default:

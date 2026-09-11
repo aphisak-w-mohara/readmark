@@ -147,6 +147,24 @@ describe("toHtml", () => {
 });
 
 describe("markdown inside a container", () => {
+  // The splitter and the renderer once decided "does this close?" in two
+  // different ways. A trailing comment satisfied one and not the other, so
+  // the contents silently stopped rendering.
+  test("a comment after the closing tag does not stop the contents rendering", () => {
+    const html = toHtml(
+      [
+        "<details>",
+        "<summary>More</summary>",
+        "",
+        "- one",
+        "- two",
+        "",
+        "</details> <!-- end -->",
+      ].join("\n"),
+    ).html;
+    expect(html).toContain("<ul><li>one</li><li>two</li></ul>");
+  });
+
   test("a table inside <details> renders, and the element stays whole", () => {
     const html = toHtml(
       [
@@ -166,4 +184,17 @@ describe("markdown inside a container", () => {
     // the close tag must be in the same rendered fragment as the open
     expect(html.indexOf("</details>")).toBeGreaterThan(html.indexOf("<table>"));
   });
+});
+
+// A comment's contents are not content: re-parsing inside one would turn
+// commented-out markdown into live HTML sitting inside a comment.
+test("a comment's body is passed through, not rendered", () => {
+  const { html, headings } = toHtml(
+    ["# Kept", "", "<!--", "## Old", "-->", "", "# After"].join("\n"),
+  );
+  expect(html).toContain("<!--\n## Old\n-->");
+  expect(html).not.toContain(">Old<");
+  expect(html).toContain("After");
+  // A commented-out heading is not in the document, so not in its outline.
+  expect(headings.map((h) => h.text)).toEqual(["Kept", "After"]);
 });
