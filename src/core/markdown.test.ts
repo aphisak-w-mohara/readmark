@@ -48,8 +48,26 @@ describe("toHtml", () => {
   });
 
   test("recognized HTML tags pass through raw (the view layer's DOMPurify removes dangerous ones)", () => {
-    const r = toHtml("a <script>evil()</script> b");
-    expect(r.html).toContain("<script>evil()</script>");
+    const r = toHtml("a <b>bold</b> and <kbd>Ctrl</kbd> b");
+    expect(r.html).toContain("<b>bold</b>");
+    expect(r.html).toContain("<kbd>Ctrl</kbd>");
+  });
+
+  // A raw-text element named in prose is prose. Parked as a tag it
+  // becomes a real opener, and the parser reads the rest of the document
+  // as its body — a later real <style> is enough to defeat any check
+  // made after the fact, so it never becomes a tag in the first place.
+  test("a raw-text element named inline is text, not an opener", () => {
+    for (const tag of ["script", "style", "textarea", "title", "iframe"]) {
+      const r = toHtml(`Use the <${tag}> element.`);
+      expect(r.html).toContain(`&lt;${tag}&gt;`);
+      expect(r.html).not.toContain(`<${tag}>`);
+    }
+  });
+
+  // <pre> is not raw text to the parser, so it still passes through.
+  test("an inline <pre> still passes through", () => {
+    expect(toHtml("a <pre>x</pre> b").html).toContain("<pre>x</pre>");
   });
 
   test("nested + task lists", () => {

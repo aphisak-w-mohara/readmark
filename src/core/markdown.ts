@@ -5,7 +5,7 @@
  * is injected (default: escape-only). That internal seam lets tests drive the
  * parser with a fake highlighter and assert code blocks are wired correctly.
  */
-import { escapeHtml, escapeAttr, safeUrl } from "./escape";
+import { escapeHtml, escapeAttr, safeUrl, RAW_TEXT } from "./escape";
 import { makeSlugger } from "./slug";
 import {
   splitBlocks,
@@ -86,10 +86,18 @@ function inline(src: string): string {
   });
   // Park valid-looking HTML tags (and comments) so raw HTML passes through; a
   // stray "<" is still escaped below. The view layer sanitizes the result.
-  t = t.replace(/<\/?[a-zA-Z][a-zA-Z0-9-]*(?:\s[^<>]*)?\/?>|<!--[\s\S]*?-->/g, (m) => {
-    tags.push(m);
-    return SENT3 + (tags.length - 1) + SENT3;
-  });
+  t = t.replace(
+    /<\/?([a-zA-Z][a-zA-Z0-9-]*)(?:\s[^<>]*)?\/?>|<!--[\s\S]*?-->/g,
+    (m, name?: string) => {
+      // Prose naming a raw-text element — "use the <style> element" — is
+      // prose. Parked, it becomes a real opener that swallows the rest of
+      // the document, and nothing downstream can tell it from one the
+      // author meant. Left here, escapeHtml below turns it into text.
+      if (name && RAW_TEXT.includes(name.toLowerCase())) return m;
+      tags.push(m);
+      return SENT3 + (tags.length - 1) + SENT3;
+    },
+  );
   t = escapeHtml(t);
   // angle autolinks: <https://example.com>
   t = t.replace(/&lt;(https?:\/\/[^\s&<>]+)&gt;/g, (_m, url: string) => stash(anchor(url, url)));

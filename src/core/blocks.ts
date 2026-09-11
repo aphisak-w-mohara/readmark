@@ -10,6 +10,8 @@
  * Pure: a string in, a list of source slices out. No DOM, no IO.
  */
 
+import { RAW_TEXT } from "./escape";
+
 export type BlockKind = "heading" | "para" | "list" | "code" | "quote" | "table" | "html" | "hr";
 
 export interface Block {
@@ -92,10 +94,11 @@ const VOID = new Set(
  * Elements whose body is literal text, never Markdown. Beyond mangling
  * the text, parsing these puts headings the reader can never see into the
  * outline — and <title>'s into the browser tab.
+ *
+ * <pre> is the one addition to the tokenizer's raw-text set: its body is
+ * ordinary markup to a browser, but it is still not Markdown.
  */
-export const LITERAL = new Set(
-  "pre script style textarea title iframe xmp noembed noframes noscript plaintext".split(" "),
-);
+export const LITERAL = new Set([...RAW_TEXT, "plaintext", "pre"]);
 
 /** A line opening an HTML comment, whose body is not even text. */
 export const COMMENT = /^\s*<!--/;
@@ -201,11 +204,17 @@ export function splitBlocks(src: string): Block[] {
   // otherwise a document of unterminated tags is quadratic. Only absence
   // generalises this way: a depth mismatch like <div><div></div> fails
   // from the first opener and succeeds from the second.
+  // ponytail: so one stray </div> anywhere puts every opener back on a
+  // full scan (156ms at 2400 of them). A running depth is the upgrade.
   const lastCloser = new Map<string, number>();
+  let lower: string[] | undefined;
   const closerAhead = (token: string, from: number): boolean => {
     let last = lastCloser.get(token);
     if (last === undefined) {
-      for (last = lines.length - 1; last >= 0 && !lines[last].includes(token); last--);
+      // A tag may be written in any case, and tagOf lowercases, so the
+      // haystack has to as well — containerEnd's own scan is /i.
+      lower ??= lines.map((l) => l.toLowerCase());
+      for (last = lower.length - 1; last >= 0 && !lower[last].includes(token); last--);
       lastCloser.set(token, last);
     }
     return last >= from;

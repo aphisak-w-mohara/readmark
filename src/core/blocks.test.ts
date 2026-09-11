@@ -168,6 +168,16 @@ describe("raw HTML containers", () => {
     expect(splitBlocks(src).map((b) => b.src)).toEqual(["<div>", "<div>\nx\n</div>", "tail"]);
   });
 
+  // Tags may be written in any case. The closer scan lowercases because
+  // tagOf does; when it did not, an uppercase container split into three
+  // blocks and its body was reflowed as Markdown.
+  test("a container written in capitals is still one block", () => {
+    for (const tag of ["PRE", "DETAILS", "Div"]) {
+      const src = [`<${tag}>`, "body", "", "more", `</${tag}>`].join("\n");
+      expect(kinds(src)).toEqual(["html"]);
+    }
+  });
+
   // A comment runs to the first "-->" ahead of it wherever that is, as a
   // browser tokenizes it — so an earlier opener cannot still be open
   // while a later one closes, which is what makes skipping the scan safe.

@@ -11,16 +11,31 @@ export const safeUrl = (u: string): string => {
 };
 
 /**
- * An opener the HTML parser reads to end-of-input when nothing closes it:
- * a comment, or a raw-text element whose body is never markup. Everything
- * after such a token becomes its body, so one dangling `<!--` — or prose
- * that merely mentions `<style>` — blanks the rest of the page.
+ * Elements the HTML tokenizer reads as text, not markup, until their end
+ * tag. Their bodies are never Markdown and never HTML, and an unclosed
+ * one runs to the end of the input.
  */
-// ponytail: the lookahead rescans the tail per candidate — 0.06ms on a
-// 190KB document, but 370ms on a synthetic one naming raw tags 4000
-// times. A single-pass scan is the upgrade if that ever shows up.
-const DANGLING =
-  /<!--(?![\s\S]*?-->)|<(script|style|textarea|title|xmp|iframe|noembed|noframes|noscript|plaintext)\b(?![\s\S]*?<\/\1\s*>)/gi;
+export const RAW_TEXT = "script style textarea title iframe xmp noembed noframes noscript".split(
+  " ",
+);
+
+/**
+ * An opener the parser reads to end-of-input when nothing closes it.
+ * Everything after such a token becomes its body, so one dangling `<!--`
+ * blanks the rest of the page.
+ *
+ * <plaintext> takes no lookahead: it has no end tag in the tokenizer, so
+ * a literal `</plaintext>` closes nothing and must not excuse it.
+ */
+// ponytail: the lookahead asks "is there a closer anywhere later", not
+// "is THIS one closed" — so a real <style> further down the document
+// excuses an unclosed one above it. Inline mentions, the common case,
+// are escaped upstream in markdown.ts; a block-level pair like that
+// needs a tokenizer to tell apart, which is the upgrade if it shows up.
+const DANGLING = new RegExp(
+  `<!--(?![\\s\\S]*?-->)|<plaintext\\b|<(${RAW_TEXT.join("|")})\\b(?![\\s\\S]*?</\\1\\s*[^>]*>)`,
+  "gi",
+);
 
 /** Show an opener nothing closes as the text it is, so it closes nothing. */
 export const sealDangling = (html: string): string =>

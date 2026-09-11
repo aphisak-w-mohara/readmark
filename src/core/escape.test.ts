@@ -46,6 +46,21 @@ describe("sealDangling", () => {
     expect(sealDangling(src)).toBe(src);
   });
 
+  // <plaintext> has no end tag in the tokenizer, so a literal
+  // </plaintext> closes nothing and must not excuse the opener.
+  test("a closer that closes nothing does not excuse <plaintext>", () => {
+    expect(sealDangling("<plaintext></plaintext>")).toContain("&lt;plaintext");
+  });
+
+  // </style x> and </style/> are real end tags; sealing there would show
+  // the stylesheet to the reader as text.
+  test("an end tag carrying attributes still counts as a closer", () => {
+    for (const close of ["</style x>", "</style/>"]) {
+      const src = `<style>.a{color:red}${close}`;
+      expect(sealDangling(src)).toBe(src);
+    }
+  });
+
   // <span> is not raw text: the parser recovers from it on its own.
   test("an ordinary unclosed tag is not touched", () => {
     const src = "<p>a <span> b</p>";
