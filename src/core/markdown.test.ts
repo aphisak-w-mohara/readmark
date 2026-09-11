@@ -223,6 +223,15 @@ describe("markdown inside a container", () => {
 
   // A heading the reader can never see must not reach the outline — and
   // <title>'s would reach the browser tab as the document's name.
+  // containerEnd and the seal must agree on what an end tag is. When
+  // containerEnd read `</style x>` as text, the block stopped at the
+  // blank line and the tail re-entered as markup — DOMPurify then
+  // dropped the lot, losing both the element and its body.
+  test("a closer carrying attributes still ends the container", () => {
+    const src = ["<style>", ".a{color:red}", "", ".b{color:blue}", "</style x>"].join("\n");
+    expect(toHtml(src).html).toBe(src);
+  });
+
   test("headings inside a literal container stay out of the outline", () => {
     for (const tag of ["textarea", "title", "iframe", "noscript", "xmp"]) {
       const { headings } = toHtml([`<${tag}>`, "# not a heading", `</${tag}>`].join("\n"));

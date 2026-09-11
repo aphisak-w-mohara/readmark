@@ -11,12 +11,20 @@ export const safeUrl = (u: string): string => {
 };
 
 /**
- * Elements the HTML tokenizer reads as text, not markup, until their end
- * tag. Their bodies are never Markdown and never HTML, and an unclosed
- * one runs to the end of the input.
+ * Elements the HTML tokenizer reads as text, not markup, to their end
+ * tag — or, for <plaintext>, which has none, to the end of the input.
+ * Their bodies are never Markdown and never HTML.
  */
 export const RAW_TEXT =
   "script style textarea title iframe xmp noembed noframes noscript plaintext".split(" ");
+
+/**
+ * What ends a tag name, per the tokenizer. Deliberately not `\s`, which
+ * also matches VT, NBSP, U+2028 and the ideographic space — none of
+ * which end a name, so `</style\u00a0>` closes nothing and an opener
+ * excused by one takes the rest of the document with it.
+ */
+export const NAME_END = "[\\t\\n\\f\\r />]";
 
 /**
  * An opener the parser reads to end-of-input when nothing closes it.
@@ -26,7 +34,9 @@ export const RAW_TEXT =
  * The closer must be a real end tag: `</style x>` and `</style/>` are,
  * `</stylesheet>` is not, and accepting that one would excuse the opener
  * it is not closing. <plaintext> takes no lookahead at all — it has no
- * end tag in the tokenizer, so nothing can excuse it.
+ * end tag, so nothing can excuse it. It is in RAW_TEXT only so LITERAL
+ * and the inline rule pick it up; its member of the group below is
+ * unreachable, and this alternative is what actually seals it.
  */
 // ponytail: the lookahead asks "is there a closer anywhere later", not
 // "is THIS one closed" — so a real <style> further down the document
@@ -34,7 +44,7 @@ export const RAW_TEXT =
 // are escaped upstream in markdown.ts; a block-level pair like that
 // needs a tokenizer to tell apart, which is the upgrade if it shows up.
 const DANGLING = new RegExp(
-  `<!--(?![\\s\\S]*?-->)|<plaintext\\b|<(${RAW_TEXT.join("|")})\\b(?![\\s\\S]*?</\\1(?=[\\s/>])[^>]*>)`,
+  `<!--(?![\\s\\S]*?-->)|<plaintext\\b|<(${RAW_TEXT.join("|")})\\b(?![\\s\\S]*?</\\1(?=${NAME_END})[^>]*>)`,
   "gi",
 );
 

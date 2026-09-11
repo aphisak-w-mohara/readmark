@@ -64,6 +64,22 @@ describe("sealDangling", () => {
   // A longer name is a different tag, not a sloppy closer. A browser
   // keeps reading, so accepting these would excuse an opener nothing
   // closed — the page-blanking case, traded in for a cosmetic one.
+  // \s is wider than the tokenizer's terminator set. A browser does not
+  // close on these, so treating one as a closer excuses the opener and
+  // the rest of the page becomes its body.
+  test("a separator the tokenizer does not accept is not a closer", () => {
+    for (const sep of ["\v", "\u00a0", "\u2028", "\u3000"]) {
+      expect(sealDangling(`<style>.a{color:red}</style${sep}>`)).toContain("&lt;style");
+    }
+  });
+
+  test("every separator the tokenizer does accept is a closer", () => {
+    for (const sep of ["", " ", "\t", "\n", "\f", "\r", "/"]) {
+      const src = `<style>.a{color:red}</style${sep}>`;
+      expect(sealDangling(src)).toBe(src);
+    }
+  });
+
   test("a tag whose name merely starts the same is not a closer", () => {
     for (const close of ["</styleX>", "</style-x>", "</stylesheet>"]) {
       expect(sealDangling(`<style>.a{color:red}${close}`)).toContain("&lt;style");

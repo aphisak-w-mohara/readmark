@@ -10,7 +10,7 @@
  * Pure: a string in, a list of source slices out. No DOM, no IO.
  */
 
-import { RAW_TEXT } from "./escape";
+import { RAW_TEXT, NAME_END } from "./escape";
 
 export type BlockKind = "heading" | "para" | "list" | "code" | "quote" | "table" | "html" | "hr";
 
@@ -101,7 +101,7 @@ const VOID = new Set(
 export const LITERAL = new Set([...RAW_TEXT, "pre"]);
 
 /** A line opening an HTML comment, whose body is not even text. */
-export const COMMENT = /^\s*<!--/;
+const COMMENT = /^\s*<!--/;
 
 /** The tag a line opens, lowercased, or undefined if it opens none. */
 export const tagOf = (line: string): string | undefined =>
@@ -130,7 +130,9 @@ export function containerEnd(lines: string[], start: number): number | null {
   const tag = tagOf(lines[start]);
   if (!tag || VOID.has(tag) || /\/>\s*$/.test(lines[start])) return null;
   const openRe = new RegExp(`<${tag}(?=[\\s/>]|$)`, "gi");
-  const closeRe = new RegExp(`</${tag}\\s*>`, "gi");
+  // The same end tag the seal recognises: `</details x>` closes, and
+  // reading it as text here left the contents to be parsed as Markdown.
+  const closeRe = new RegExp(`</${tag}(?=${NAME_END})[^>]*>`, "gi");
   let depth = 0;
   for (let n = start; n < lines.length; n++) {
     // Depth only moves on lines with a tag; skipping the rest keeps an
