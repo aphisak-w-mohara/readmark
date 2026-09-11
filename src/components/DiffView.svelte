@@ -149,7 +149,12 @@
 
 {#if diff.whole}
   {#each diff.rows as row, i (i)}
-    <div class="diff-row">{@html diff.whole === "removed" ? row.before : row.after}</div>
+    <!-- No washes here (every block is a change, so marking them says
+         nothing) but the blocks are still in the diff, so they can still
+         carry a comment. -->
+    <div class="diff-row">
+      {@render commentSlot(row, diff.whole === "removed" ? row.before : row.after)}
+    </div>
   {/each}
 {:else if layout === "unified"}
   {#each items as item (itemKey(item))}
