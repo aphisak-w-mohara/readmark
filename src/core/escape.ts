@@ -15,17 +15,18 @@ export const safeUrl = (u: string): string => {
  * tag. Their bodies are never Markdown and never HTML, and an unclosed
  * one runs to the end of the input.
  */
-export const RAW_TEXT = "script style textarea title iframe xmp noembed noframes noscript".split(
-  " ",
-);
+export const RAW_TEXT =
+  "script style textarea title iframe xmp noembed noframes noscript plaintext".split(" ");
 
 /**
  * An opener the parser reads to end-of-input when nothing closes it.
  * Everything after such a token becomes its body, so one dangling `<!--`
  * blanks the rest of the page.
  *
- * <plaintext> takes no lookahead: it has no end tag in the tokenizer, so
- * a literal `</plaintext>` closes nothing and must not excuse it.
+ * The closer must be a real end tag: `</style x>` and `</style/>` are,
+ * `</stylesheet>` is not, and accepting that one would excuse the opener
+ * it is not closing. <plaintext> takes no lookahead at all — it has no
+ * end tag in the tokenizer, so nothing can excuse it.
  */
 // ponytail: the lookahead asks "is there a closer anywhere later", not
 // "is THIS one closed" — so a real <style> further down the document
@@ -33,7 +34,7 @@ export const RAW_TEXT = "script style textarea title iframe xmp noembed noframes
 // are escaped upstream in markdown.ts; a block-level pair like that
 // needs a tokenizer to tell apart, which is the upgrade if it shows up.
 const DANGLING = new RegExp(
-  `<!--(?![\\s\\S]*?-->)|<plaintext\\b|<(${RAW_TEXT.join("|")})\\b(?![\\s\\S]*?</\\1\\s*[^>]*>)`,
+  `<!--(?![\\s\\S]*?-->)|<plaintext\\b|<(${RAW_TEXT.join("|")})\\b(?![\\s\\S]*?</\\1(?=[\\s/>])[^>]*>)`,
   "gi",
 );
 

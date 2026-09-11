@@ -98,7 +98,7 @@ const VOID = new Set(
  * <pre> is the one addition to the tokenizer's raw-text set: its body is
  * ordinary markup to a browser, but it is still not Markdown.
  */
-export const LITERAL = new Set([...RAW_TEXT, "plaintext", "pre"]);
+export const LITERAL = new Set([...RAW_TEXT, "pre"]);
 
 /** A line opening an HTML comment, whose body is not even text. */
 export const COMMENT = /^\s*<!--/;
@@ -207,14 +207,14 @@ export function splitBlocks(src: string): Block[] {
   // ponytail: so one stray </div> anywhere puts every opener back on a
   // full scan (156ms at 2400 of them). A running depth is the upgrade.
   const lastCloser = new Map<string, number>();
-  let lower: string[] | undefined;
   const closerAhead = (token: string, from: number): boolean => {
     let last = lastCloser.get(token);
     if (last === undefined) {
-      // A tag may be written in any case, and tagOf lowercases, so the
-      // haystack has to as well — containerEnd's own scan is /i.
-      lower ??= lines.map((l) => l.toLowerCase());
-      for (last = lower.length - 1; last >= 0 && !lower[last].includes(token); last--);
+      // Case-insensitive because tagOf lowercases and containerEnd's own
+      // scan is /i. A token is "-->" or "</" + a tagOf name, so it holds
+      // no character a regex would read as syntax.
+      const re = new RegExp(token, "i");
+      for (last = lines.length - 1; last >= 0 && !re.test(lines[last]); last--);
       lastCloser.set(token, last);
     }
     return last >= from;

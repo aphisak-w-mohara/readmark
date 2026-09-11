@@ -55,9 +55,18 @@ describe("sealDangling", () => {
   // </style x> and </style/> are real end tags; sealing there would show
   // the stylesheet to the reader as text.
   test("an end tag carrying attributes still counts as a closer", () => {
-    for (const close of ["</style x>", "</style/>"]) {
+    for (const close of ["</style x>", "</style/>", "</style >"]) {
       const src = `<style>.a{color:red}${close}`;
       expect(sealDangling(src)).toBe(src);
+    }
+  });
+
+  // A longer name is a different tag, not a sloppy closer. A browser
+  // keeps reading, so accepting these would excuse an opener nothing
+  // closed — the page-blanking case, traded in for a cosmetic one.
+  test("a tag whose name merely starts the same is not a closer", () => {
+    for (const close of ["</styleX>", "</style-x>", "</stylesheet>"]) {
+      expect(sealDangling(`<style>.a{color:red}${close}`)).toContain("&lt;style");
     }
   });
 
