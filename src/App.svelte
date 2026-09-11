@@ -188,15 +188,25 @@
     ];
   }
 
+  /**
+   * Bring change `i` into view. Measured from bounding rects rather than
+   * offsetTop: a diff row's offsetParent is not the stage, so its
+   * offsetTop is in a different coordinate space and lands nowhere near.
+   */
+  function scrollToChange(i: number) {
+    const els = changeEls();
+    const el = els[i];
+    if (!el || !stageEl) return;
+    const top =
+      stageEl.scrollTop + el.getBoundingClientRect().top - stageEl.getBoundingClientRect().top - 80;
+    stageEl.scrollTo({ top, behavior: reduceMotion ? "auto" : "smooth" });
+  }
+
   function stepChange(delta: number) {
     const els = changeEls();
-    if (!els.length || !stageEl) return;
-    const next = (changeIndex + delta + els.length) % els.length;
-    changeIndex = next;
-    stageEl.scrollTo({
-      top: els[next].offsetTop - 80,
-      behavior: reduceMotion ? "auto" : "smooth",
-    });
+    if (!els.length) return;
+    changeIndex = (changeIndex + delta + els.length) % els.length;
+    scrollToChange(changeIndex);
   }
 
   function jump(id: string) {
@@ -265,6 +275,9 @@
       const row = changeRows[changeIndex];
       if (row) {
         e.preventDefault();
+        // The editor takes focus, so it has to be somewhere you can see:
+        // the cursor may be far off-screen when `c` is pressed.
+        scrollToChange(changeIndex);
         diffView?.openComment(row);
       }
     }
