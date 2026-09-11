@@ -196,7 +196,7 @@
     const els = changeEls();
     if (!els.length) return;
     changeIndex = (changeIndex + delta + els.length) % els.length;
-    els[changeIndex]?.scrollIntoView();
+    els[changeIndex].scrollIntoView();
   }
 
   // #stage owns the easing (scroll-behavior, with its own reduced-motion

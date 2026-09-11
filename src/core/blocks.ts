@@ -88,6 +88,16 @@ const VOID = new Set(
   "area base br col embed hr img input link meta param source track wbr".split(" "),
 );
 
+/** Elements whose body is literal text, never Markdown. */
+export const LITERAL = new Set("pre script style textarea".split(" "));
+
+/** A line opening an HTML comment, whose body is not even text. */
+export const COMMENT = /^\s*<!--/;
+
+/** The tag a line opens, lowercased, or undefined if it opens none. */
+export const tagOf = (line: string): string | undefined =>
+  line.match(/^\s*<([a-zA-Z][\w-]*)/)?.[1]?.toLowerCase();
+
 /**
  * Where the container opened at `start` closes, as an exclusive end index,
  * or null when this is not a closed container.
@@ -97,20 +107,18 @@ const VOID = new Set(
  * element apart: rendered a block at a time, the opening tag and its
  * contents become siblings and the element silently stops working.
  *
- * One answer, asked twice: the splitter keeps the element in a single
- * block, and the renderer uses it to know which lines are the contents.
- * Two rules for one question drift, and the symptom is Markdown inside
- * <details> quietly ceasing to render.
+ * Both the splitter and the renderer ask this, so they cannot disagree
+ * about it.
  */
 export function containerEnd(lines: string[], start: number): number | null {
-  // A comment is a container too, and the worst one to split: an unclosed
-  // <!-- swallows every element after it, so commenting out a section
-  // blanks the rest of the document.
-  if (/^\s*<!--/.test(lines[start])) {
+  // A comment closes on a literal, not on a matching tag, so it needs its
+  // own scan — and it is the container that most needs one: left open, the
+  // browser reads the rest of the page as its body.
+  if (COMMENT.test(lines[start])) {
     for (let n = start; n < lines.length; n++) if (lines[n].includes("-->")) return n + 1;
     return null;
   }
-  const tag = lines[start]?.match(/^\s*<([a-zA-Z][\w-]*)/)?.[1]?.toLowerCase();
+  const tag = tagOf(lines[start]);
   if (!tag || VOID.has(tag) || /\/>\s*$/.test(lines[start])) return null;
   const openRe = new RegExp(`<${tag}(?=[\\s/>]|$)`, "gi");
   const closeRe = new RegExp(`</${tag}\\s*>`, "gi");
@@ -180,6 +188,7 @@ export function splitBlocks(src: string): Block[] {
   const lines = src.replace(/\r\n?/g, "\n").replace(/\t/g, "    ").split("\n");
   const out: Block[] = [];
   let i = 0;
+  let noCloser = false; // no "-->" remains anywhere ahead
 
   const push = (kind: BlockKind, start: number, end: number) => {
     const body = lines.slice(start, end).join("\n");
@@ -267,7 +276,13 @@ export function splitBlocks(src: string): Block[] {
 
     // raw HTML block
     if (HTML_OPEN.test(line) && !/^\s*<https?:/i.test(line)) {
-      i = containerEnd(lines, i) ?? blankEnd(lines, i);
+      // A comment with no "-->" ahead of it proves there is none ahead of
+      // any later comment either, so that whole-file scan runs once rather
+      // than once per opener.
+      const comment = COMMENT.test(line);
+      const end = comment && noCloser ? null : containerEnd(lines, i);
+      if (end === null && comment) noCloser = true;
+      i = end ?? blankEnd(lines, i);
       push("html", start, i);
       continue;
     }

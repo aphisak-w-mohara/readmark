@@ -138,7 +138,7 @@ describe("raw HTML containers", () => {
     // A stray </span> later would balance it if the tag were treated as an
     // opener, swallowing the paragraph between them into one block.
     const src = ["<span />", "", "after", "", "</span>"].join("\n");
-    expect(splitBlocks(src).map((b) => b.kind)).toEqual(["html", "para", "html"]);
+    expect(kinds(src)).toEqual(["html", "para", "html"]);
   });
 
   // A comment split at its first blank line never gets its "-->" back:
@@ -151,8 +151,20 @@ describe("raw HTML containers", () => {
     expect(blocks[1].src).toBe("<!--\n## Old\n\ntext\n-->");
   });
 
-  test("a one-line comment closes on its own line", () => {
-    const src = ["<!-- note -->", "", "after"].join("\n");
-    expect(splitBlocks(src).map((b) => b.kind)).toEqual(["html", "para"]);
+  // Each unclosed "<!--" used to scan to end of file on its own, which is
+  // quadratic; one failed scan now answers for all of them. 20k such lines
+  // went from 576ms to 3.7ms, and the split must still be the same.
+  test("repeated unclosed comments each end at their own blank line", () => {
+    const src = ["<!-- a", "", "<!-- b", "", "<!-- c", "", "tail"].join("\n");
+    expect(kinds(src)).toEqual(["html", "html", "html", "para"]);
+    expect(splitBlocks(src).map((b) => b.src)).toEqual(["<!-- a", "<!-- b", "<!-- c", "tail"]);
+  });
+
+  // The latch is only sound because a "-->" ahead closes the EARLIER
+  // opener, exactly as a browser tokenizes it — so "still open while a
+  // later one closes" cannot happen, and one failed scan answers for all.
+  test("a comment runs to the first closer ahead of it, wherever it is", () => {
+    const src = ["<!-- open", "", "<!-- nested", "-->", "", "tail"].join("\n");
+    expect(splitBlocks(src).map((b) => b.src)).toEqual(["<!-- open\n\n<!-- nested\n-->", "tail"]);
   });
 });

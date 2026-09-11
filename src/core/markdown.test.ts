@@ -184,17 +184,39 @@ describe("markdown inside a container", () => {
     // the close tag must be in the same rendered fragment as the open
     expect(html.indexOf("</details>")).toBeGreaterThan(html.indexOf("<table>"));
   });
-});
 
-// A comment's contents are not content: re-parsing inside one would turn
-// commented-out markdown into live HTML sitting inside a comment.
-test("a comment's body is passed through, not rendered", () => {
-  const { html, headings } = toHtml(
-    ["# Kept", "", "<!--", "## Old", "-->", "", "# After"].join("\n"),
-  );
-  expect(html).toContain("<!--\n## Old\n-->");
-  expect(html).not.toContain(">Old<");
-  expect(html).toContain("After");
-  // A commented-out heading is not in the document, so not in its outline.
-  expect(headings.map((h) => h.text)).toEqual(["Kept", "After"]);
+  test("a comment's body is passed through, not rendered", () => {
+    const { html, headings } = toHtml(
+      ["# Kept", "", "<!--", "## Old", "-->", "", "# After"].join("\n"),
+    );
+    expect(html).toContain("<!--\n## Old\n-->");
+    expect(html).not.toContain(">Old<");
+    expect(html).toContain("After");
+    // A commented-out heading is not in the document, so not in its outline.
+    expect(headings.map((h) => h.text)).toEqual(["Kept", "After"]);
+  });
+
+  // The browser reads everything after an unterminated "<!--" as the
+  // comment's body, so leaving it raw blanks the rest of the page.
+  test("an unclosed comment is shown as text, not left to eat the document", () => {
+    const { html } = toHtml(["# Kept", "", "<!-- oops", "", "# After"].join("\n"));
+    expect(html).toContain("&lt;!-- oops");
+    expect(html).not.toContain("<!--");
+    expect(html).toContain('<h1 id="after">After</h1>');
+  });
+
+  // <pre> is the second most common raw container in a README, and its
+  // body is output, not prose: reflowing it is the same bug as the one
+  // fixed for comments, one element over.
+  test("a literal container's body is not parsed as Markdown", () => {
+    for (const tag of ["pre", "script", "style", "textarea"]) {
+      const src = [`<${tag}>`, "  indented *not emph*", "- not a list", `</${tag}>`].join("\n");
+      expect(toHtml(src).html).toBe(src);
+    }
+  });
+
+  test("a heading inside <textarea> is not in the outline", () => {
+    const { headings } = toHtml(["<textarea>", "# not a heading", "</textarea>"].join("\n"));
+    expect(headings).toEqual([]);
+  });
 });
