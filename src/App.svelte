@@ -392,6 +392,7 @@
   {#if store.mode === "diff" && store.commenting && (store.draft.length || store.submitted || store.reviewError)}
     <ReviewBar
       count={store.draft.length}
+      ownPr={store.ownPr}
       busy={store.submitting}
       error={store.reviewError}
       submitted={store.submitted}

@@ -3,13 +3,15 @@
 
   interface Props {
     count: number;
+    /** Your own pull request: GitHub refuses a verdict on one. */
+    ownPr: boolean;
     busy: boolean;
     error: string | null;
     submitted: string | null;
     onSubmit: (event: ReviewEvent, summary: string) => void;
     onDismiss: () => void;
   }
-  let { count, busy, error, submitted, onSubmit, onDismiss }: Props = $props();
+  let { count, ownPr, busy, error, submitted, onSubmit, onDismiss }: Props = $props();
 
   let event = $state<ReviewEvent | null>(null);
   let summary = $state("");
@@ -57,14 +59,19 @@
       </button>
       <button class="rv-btn" onclick={() => (event = null)}>Cancel</button>
     {:else}
+      {#if ownPr}
+        <span class="rv-note">Your own pull request — GitHub takes comments, not a verdict.</span>
+      {/if}
       <span class="rv-spacer"></span>
       <button class="rv-btn" onclick={() => choose("COMMENT")} disabled={busy}>Comment</button>
-      <button class="rv-btn" onclick={() => choose("REQUEST_CHANGES")} disabled={busy}>
-        Request changes
-      </button>
-      <button class="rv-btn approve" onclick={() => choose("APPROVE")} disabled={busy}>
-        {busy ? "Sending…" : "Approve"}
-      </button>
+      {#if !ownPr}
+        <button class="rv-btn" onclick={() => choose("REQUEST_CHANGES")} disabled={busy}>
+          Request changes
+        </button>
+        <button class="rv-btn approve" onclick={() => choose("APPROVE")} disabled={busy}>
+          {busy ? "Sending…" : "Approve"}
+        </button>
+      {/if}
     {/if}
   {/if}
 </div>

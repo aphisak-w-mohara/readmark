@@ -2,6 +2,7 @@ import { test, expect, describe } from "bun:test";
 import {
   resolvePR,
   fetchPr,
+  fetchViewer,
   listMarkdownFiles,
   listMarkdownFilesBetween,
   listCommits,
@@ -38,6 +39,7 @@ const PR: PrInfo = {
   baseSha: "base1",
   headSha: "head1",
   url: "https://github.com/o/r/pull/42",
+  author: "octocat",
 };
 
 describe("resolvePR", () => {
@@ -60,6 +62,19 @@ describe("resolvePR", () => {
   });
 });
 
+describe("fetchViewer", () => {
+  test("reads the login the credential belongs to", async () => {
+    const { fn } = fakeFetch({ "/user": { login: "octocat" } });
+    expect(await fetchViewer(fn)).toBe("octocat");
+  });
+
+  // Used only to take a button away, so not knowing must leave it there.
+  test("a failure is null, not a throw", async () => {
+    const { fn } = fakeFetch({});
+    expect(await fetchViewer(fn)).toBeNull();
+  });
+});
+
 describe("fetchPr", () => {
   test("reads the title and both commits", async () => {
     const { fn } = fakeFetch({
@@ -68,13 +83,30 @@ describe("fetchPr", () => {
         html_url: "https://github.com/o/r/pull/42",
         base: { sha: "b" },
         head: { sha: "h" },
+        user: { login: "octocat" },
       },
     });
     expect(await fetchPr({ owner: "o", repo: "r", number: 42 }, fn)).toMatchObject({
       title: "T",
       baseSha: "b",
       headSha: "h",
+      author: "octocat",
     });
+  });
+
+  // A PR whose author has since been deleted has a null user. No author
+  // means no match, which offers the verdict rather than hiding it.
+  test("a missing author is empty, not a crash", async () => {
+    const { fn } = fakeFetch({
+      "/repos/o/r/pulls/42": {
+        title: "T",
+        html_url: "u",
+        base: { sha: "b" },
+        head: { sha: "h" },
+        user: null,
+      },
+    });
+    expect((await fetchPr({ owner: "o", repo: "r", number: 42 }, fn)).author).toBe("");
   });
 
   test("a 404 explains that credentials may not cover the repo", async () => {
@@ -402,7 +434,7 @@ describe("writing a review", () => {
     );
   });
 
-  test("a 422 explains that the diff moved, and quotes GitHub", async () => {
+  test("a 422 quotes GitHub when it names the field", async () => {
     const { fn } = recorder(
       422,
       '{"message":"Validation Failed","errors":[{"message":"line must be part of the diff"}]}',
@@ -410,6 +442,35 @@ describe("writing a review", () => {
     expect(submitReview(ref, "h", "COMMENT", "s", draft, fn)).rejects.toThrow(
       /line must be part of the diff/,
     );
+  });
+
+  /**
+   * The shape GitHub actually sent for a verdict on your own pull
+   * request. Read as `errors[0].message` it is undefined, and the reason
+   * was replaced by a guess that the diff had moved — which sent the
+   * reader off to reload a diff that was already current.
+   */
+  test("a 422 whose errors are plain strings is still quoted", async () => {
+    const { fn } = recorder(
+      422,
+      '{"message":"Unprocessable Entity","errors":["Review Can not request changes on your own pull request"]}',
+    );
+    const err = submitReview(ref, "h", "REQUEST_CHANGES", "s", draft, fn);
+    expect(err).rejects.toThrow(/Can not request changes on your own pull request/);
+    expect(err).rejects.not.toThrow(/probably moved/);
+  });
+
+  test("several reasons are all reported", async () => {
+    const { fn } = recorder(422, '{"message":"x","errors":["first reason","second reason"]}');
+    expect(submitReview(ref, "h", "COMMENT", "s", draft, fn)).rejects.toThrow(
+      /first reason; second reason/,
+    );
+  });
+
+  // Only then is a guess the best we can do.
+  test("a 422 with no reason at all falls back to the stale-diff guess", async () => {
+    const { fn } = recorder(422, '{"message":""}');
+    expect(submitReview(ref, "h", "COMMENT", "s", draft, fn)).rejects.toThrow(/may have moved/);
   });
 
   test("a network failure says the draft is safe", async () => {

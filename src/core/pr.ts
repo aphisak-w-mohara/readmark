@@ -27,6 +27,8 @@ export interface PrInfo extends PrRef {
   baseSha: string;
   headSha: string;
   url: string;
+  /** Who opened it. GitHub refuses a verdict on your own pull request. */
+  author: string;
 }
 
 export interface PrFile {
@@ -124,6 +126,7 @@ interface RawPr {
   html_url: string;
   base: { sha: string };
   head: { sha: string };
+  user: { login: string } | null;
 }
 
 /** Fetch a PR's metadata: title and the two commits to diff between. */
@@ -135,7 +138,22 @@ export async function fetchPr(ref: PrRef, fetchFn: FetchLike): Promise<PrInfo> {
     baseSha: raw.base.sha,
     headSha: raw.head.sha,
     url: raw.html_url,
+    author: raw.user?.login ?? "",
   };
+}
+
+/**
+ * Who the credential belongs to. Used only to keep a verdict off your own
+ * pull request, so a failure here returns null and the UI offers
+ * everything — a wrong guess must not take away a button that works.
+ */
+export async function fetchViewer(fetchFn: FetchLike): Promise<string | null> {
+  try {
+    const me = await getJson<{ login?: string }>(fetchFn, "/user");
+    return me.login ?? null;
+  } catch {
+    return null;
+  }
 }
 
 interface RawFile {
@@ -342,16 +360,45 @@ export async function fetchSides(pr: PrInfo, file: PrFile, fetchFn: FetchLike): 
  * almost always a token without Pull requests: write; a 422 is an anchor
  * GitHub will not take, usually because the pull request moved under you.
  */
+type GhError = string | { message?: string; field?: string; code?: string; resource?: string };
+
+/**
+ * What GitHub said went wrong. Its 422s carry `errors` either as objects
+ * with a `message` or as bare strings, and reading only the first shape
+ * threw away the explanation — leaving the generic "Unprocessable
+ * Entity" and a guess about the cause in its place.
+ */
+function ghDetail(text: string): string {
+  let err;
+  try {
+    err = JSON.parse(text) as { message?: string; errors?: GhError[] };
+  } catch {
+    return ""; // a body we cannot read adds nothing to the message
+  }
+  const said = (e: GhError): string =>
+    typeof e === "string"
+      ? e
+      : (e.message ?? [e.resource, e.field, e.code].filter(Boolean).join(" "));
+  const reasons = (err.errors ?? []).map(said).filter(Boolean);
+  // The generic status text is worth saying only when nothing else was.
+  return reasons.length ? reasons.join("; ") : (err.message ?? "");
+}
+
 function writeError(status: number, detail: string): SourceError {
   if (status === 403 || status === 401)
     return new SourceError(
       "http",
       "GitHub refused the write. A token needs Pull requests: write to leave a review — read-only is enough to read one, but not to send one.",
     );
+  // Only guess at the cause when GitHub gave none of its own: it usually
+  // names the field it refused, and "reload and try again" is wrong
+  // advice for a diff that is already current.
   if (status === 422)
     return new SourceError(
       "http",
-      `GitHub would not accept the comment's position${detail ? ` (${detail})` : ""}. The pull request has probably moved since this diff was loaded — reload it and try again.`,
+      detail
+        ? `GitHub refused the review: ${detail}`
+        : "GitHub would not accept the comment's position, and gave no reason. The pull request may have moved since this diff was loaded — reload it and try again.",
     );
   return httpError(status);
 }
@@ -365,14 +412,7 @@ async function post(fetchFn: FetchLike, path: string, body: unknown): Promise<un
   }
   const text = await res.text();
   if (!res.ok) {
-    let detail = "";
-    try {
-      const err = JSON.parse(text) as { message?: string; errors?: { message?: string }[] };
-      detail = err.errors?.[0]?.message || err.message || "";
-    } catch {
-      /* a body we cannot read adds nothing to the message */
-    }
-    throw writeError(res.status, detail);
+    throw writeError(res.status, ghDetail(text));
   }
   return text ? JSON.parse(text) : null;
 }

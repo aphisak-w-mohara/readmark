@@ -13,6 +13,7 @@ import { SourceError, type FetchLike } from "./core/source";
 import {
   currentLogin,
   fetchPr,
+  fetchViewer,
   fetchSides,
   postComment,
   submitReview,
@@ -66,6 +67,8 @@ class ReadmarkStore {
   // PR review
   mode = $state<"doc" | "diff">("doc");
   pr = $state<PrInfo | null>(null);
+  /** The credential's own login, when GitHub would tell us. */
+  viewer = $state<string | null>(null);
   files = $state<PrFiles | null>(null);
   activeFile = $state<PrFile | null>(null);
   diff = $state<DiffDoc | null>(null);
@@ -167,10 +170,11 @@ class ReadmarkStore {
     const gh = makeGhFetch(auth);
     this.busy = true;
     try {
-      const [pr, files, commits] = await Promise.all([
+      const [pr, files, commits, viewer] = await Promise.all([
         fetchPr(ref, gh),
         listMarkdownFiles(ref, gh),
         listCommits(ref, gh),
+        fetchViewer(gh),
       ]);
       if (!files.markdown.length)
         throw new SourceError(
@@ -181,6 +185,7 @@ class ReadmarkStore {
       // opening a different one must not carry a draft across — it would
       // submit against the wrong PR.
       this.clearReview();
+      this.viewer = viewer;
       this.pr = pr;
       this.files = files;
       this.commits = commits;
@@ -223,6 +228,16 @@ class ReadmarkStore {
    * from one can name a line GitHub's diff does not have. One rule, read
    * by the anchors, the submit commit, and the review bar alike.
    */
+  /**
+   * A verdict on your own pull request is refused by GitHub — "Can not
+   * request changes on your own pull request", as a bare 422. Knowing it
+   * here keeps the button from offering what the API will not do. Unknown
+   * either way means offer it: the error now says what GitHub said.
+   */
+  get ownPr(): boolean {
+    return Boolean(this.viewer && this.pr?.author && this.viewer === this.pr.author);
+  }
+
   get commenting(): boolean {
     return this.range === null;
   }
