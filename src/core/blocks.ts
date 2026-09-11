@@ -88,15 +88,21 @@ const VOID = new Set(
   "area base br col embed hr img input link meta param source track wbr".split(" "),
 );
 
-/** Elements whose body is literal text, never Markdown. */
-export const LITERAL = new Set("pre script style textarea".split(" "));
+/**
+ * Elements whose body is literal text, never Markdown. Beyond mangling
+ * the text, parsing these puts headings the reader can never see into the
+ * outline — and <title>'s into the browser tab.
+ */
+export const LITERAL = new Set(
+  "pre script style textarea title iframe xmp noembed noframes noscript plaintext".split(" "),
+);
 
 /** A line opening an HTML comment, whose body is not even text. */
 export const COMMENT = /^\s*<!--/;
 
 /** The tag a line opens, lowercased, or undefined if it opens none. */
 export const tagOf = (line: string): string | undefined =>
-  line.match(/^\s*<([a-zA-Z][\w-]*)/)?.[1]?.toLowerCase();
+  line.match(/^\s*<([a-zA-Z][\w-]*)/)?.[1].toLowerCase();
 
 /**
  * Where the container opened at `start` closes, as an exclusive end index,
@@ -188,7 +194,22 @@ export function splitBlocks(src: string): Block[] {
   const lines = src.replace(/\r\n?/g, "\n").replace(/\t/g, "    ").split("\n");
   const out: Block[] = [];
   let i = 0;
-  let noCloser = false; // no "-->" remains anywhere ahead
+
+  // The last line each closing token appears on, found once and reused.
+  // An opener with none ahead of it can only fall back, so it is refused
+  // without the scan to end-of-file that discovering it would cost —
+  // otherwise a document of unterminated tags is quadratic. Only absence
+  // generalises this way: a depth mismatch like <div><div></div> fails
+  // from the first opener and succeeds from the second.
+  const lastCloser = new Map<string, number>();
+  const closerAhead = (token: string, from: number): boolean => {
+    let last = lastCloser.get(token);
+    if (last === undefined) {
+      for (last = lines.length - 1; last >= 0 && !lines[last].includes(token); last--);
+      lastCloser.set(token, last);
+    }
+    return last >= from;
+  };
 
   const push = (kind: BlockKind, start: number, end: number) => {
     const body = lines.slice(start, end).join("\n");
@@ -276,12 +297,9 @@ export function splitBlocks(src: string): Block[] {
 
     // raw HTML block
     if (HTML_OPEN.test(line) && !/^\s*<https?:/i.test(line)) {
-      // A comment with no "-->" ahead of it proves there is none ahead of
-      // any later comment either, so that whole-file scan runs once rather
-      // than once per opener.
-      const comment = COMMENT.test(line);
-      const end = comment && noCloser ? null : containerEnd(lines, i);
-      if (end === null && comment) noCloser = true;
+      const tag = tagOf(line);
+      const closer = COMMENT.test(line) ? "-->" : tag && `</${tag}`;
+      const end = closer && !closerAhead(closer, i) ? null : containerEnd(lines, i);
       i = end ?? blankEnd(lines, i);
       push("html", start, i);
       continue;

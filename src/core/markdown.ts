@@ -15,7 +15,6 @@ import {
   containerEnd,
   tagOf,
   LITERAL,
-  COMMENT,
   type Block,
 } from "./blocks";
 
@@ -282,17 +281,14 @@ function renderBlock(b: Block, ctx: Ctx): string {
       // still go through the parser, which is the whole point of writing
       // a table or a list inside <details>.
       const lines = b.src.split("\n");
-      const end = containerEnd(lines, 0);
-      // An unclosed comment is not a comment. Left raw, the browser reads
-      // every element after it as the comment's body and the rest of the
-      // document disappears, so it is shown as the text it actually is.
-      if (end === null && COMMENT.test(lines[0])) return escapeHtml(b.src);
       // No tag at all is a comment or a stray closing tag; a LITERAL body
       // is text. Neither is Markdown, so neither goes back to the parser.
+      // (A dangling opener is neutralised at the sanitize seam, which is
+      // the only place that also sees the ones inline text produces.)
       const tag = tagOf(lines[0]);
       if (!tag || LITERAL.has(tag)) return b.src;
       // The same answer the splitter used, not a second guess at it.
-      if (end !== lines.length || lines.length < 3) return b.src;
+      if (containerEnd(lines, 0) !== lines.length || lines.length < 3) return b.src;
       return `${lines[0]}\n${parseBlocks(lines.slice(1, -1).join("\n"), ctx)}\n${lines[lines.length - 1]}`;
     }
     default:

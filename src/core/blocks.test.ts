@@ -122,14 +122,11 @@ describe("raw HTML containers", () => {
 
   test("an unclosed container falls back to the blank-line rule", () => {
     const src = ["<div>", "dangling", "", "# A separate heading"].join("\n");
-    expect(splitBlocks(src).map((b) => b.kind)).toEqual(["html", "heading"]);
+    expect(kinds(src)).toEqual(["html", "heading"]);
   });
 
   test("a void element is not treated as a container", () => {
-    expect(splitBlocks(["<hr/>", "", "after"].join("\n")).map((b) => b.kind)).toEqual([
-      "html",
-      "para",
-    ]);
+    expect(kinds(["<hr/>", "", "after"].join("\n"))).toEqual(["html", "para"]);
   });
 
   // hr and img are void, so they never reach the self-closing check; a
@@ -151,18 +148,29 @@ describe("raw HTML containers", () => {
     expect(blocks[1].src).toBe("<!--\n## Old\n\ntext\n-->");
   });
 
-  // Each unclosed "<!--" used to scan to end of file on its own, which is
-  // quadratic; one failed scan now answers for all of them. 20k such lines
-  // went from 576ms to 3.7ms, and the split must still be the same.
-  test("repeated unclosed comments each end at their own blank line", () => {
-    const src = ["<!-- a", "", "<!-- b", "", "<!-- c", "", "tail"].join("\n");
-    expect(kinds(src)).toEqual(["html", "html", "html", "para"]);
-    expect(splitBlocks(src).map((b) => b.src)).toEqual(["<!-- a", "<!-- b", "<!-- c", "tail"]);
+  // Openers whose closer is nowhere ahead are refused without a scan
+  // each. The split must be the one the scans would have produced.
+  test("repeated openers with no closer each end at their own blank line", () => {
+    for (const [open, kind] of [
+      ["<!-- a", "html"],
+      ["<div>", "html"],
+    ] as const) {
+      const src = [open, "", open, "", open, "", "tail"].join("\n");
+      expect(kinds(src)).toEqual([kind, kind, kind, "para"]);
+    }
   });
 
-  // The latch is only sound because a "-->" ahead closes the EARLIER
-  // opener, exactly as a browser tokenizes it — so "still open while a
-  // later one closes" cannot happen, and one failed scan answers for all.
+  // Only absence of a closer generalises to later openers. Depth failure
+  // does not: this fails from the first <div> and succeeds from the
+  // second, so a latch keyed on "the scan failed" would break it.
+  test("a container still closes after one of the same tag did not", () => {
+    const src = ["<div>", "", "<div>", "x", "</div>", "", "tail"].join("\n");
+    expect(splitBlocks(src).map((b) => b.src)).toEqual(["<div>", "<div>\nx\n</div>", "tail"]);
+  });
+
+  // A comment runs to the first "-->" ahead of it wherever that is, as a
+  // browser tokenizes it — so an earlier opener cannot still be open
+  // while a later one closes, which is what makes skipping the scan safe.
   test("a comment runs to the first closer ahead of it, wherever it is", () => {
     const src = ["<!-- open", "", "<!-- nested", "-->", "", "tail"].join("\n");
     expect(splitBlocks(src).map((b) => b.src)).toEqual(["<!-- open\n\n<!-- nested\n-->", "tail"]);

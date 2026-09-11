@@ -196,18 +196,6 @@ describe("markdown inside a container", () => {
     expect(headings.map((h) => h.text)).toEqual(["Kept", "After"]);
   });
 
-  // The browser reads everything after an unterminated "<!--" as the
-  // comment's body, so leaving it raw blanks the rest of the page.
-  test("an unclosed comment is shown as text, not left to eat the document", () => {
-    const { html } = toHtml(["# Kept", "", "<!-- oops", "", "# After"].join("\n"));
-    expect(html).toContain("&lt;!-- oops");
-    expect(html).not.toContain("<!--");
-    expect(html).toContain('<h1 id="after">After</h1>');
-  });
-
-  // <pre> is the second most common raw container in a README, and its
-  // body is output, not prose: reflowing it is the same bug as the one
-  // fixed for comments, one element over.
   test("a literal container's body is not parsed as Markdown", () => {
     for (const tag of ["pre", "script", "style", "textarea"]) {
       const src = [`<${tag}>`, "  indented *not emph*", "- not a list", `</${tag}>`].join("\n");
@@ -215,8 +203,12 @@ describe("markdown inside a container", () => {
     }
   });
 
-  test("a heading inside <textarea> is not in the outline", () => {
-    const { headings } = toHtml(["<textarea>", "# not a heading", "</textarea>"].join("\n"));
-    expect(headings).toEqual([]);
+  // A heading the reader can never see must not reach the outline — and
+  // <title>'s would reach the browser tab as the document's name.
+  test("headings inside a literal container stay out of the outline", () => {
+    for (const tag of ["textarea", "title", "iframe", "noscript", "xmp"]) {
+      const { headings } = toHtml([`<${tag}>`, "# not a heading", `</${tag}>`].join("\n"));
+      expect(headings).toEqual([]);
+    }
   });
 });
