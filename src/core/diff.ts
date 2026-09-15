@@ -13,6 +13,7 @@
 import { splitBlocks, stripMarks, MARK, type Block, type BlockKind } from "./blocks";
 import { align, type Change } from "./align";
 import { renderBlockList, stripRefDefs, type Heading, type MarkdownOptions } from "./markdown";
+import { anchorFor, type Anchor, type Commentable } from "./patch";
 
 const { delOpen: DEL_OPEN, delClose: DEL_CLOSE, insOpen: INS_OPEN, insClose: INS_CLOSE } = MARK;
 
@@ -147,6 +148,11 @@ export interface DiffRow {
   marked: boolean;
   /** Source line the row points at, on whichever side it exists. */
   line: number;
+  /**
+   * Where a review comment on this block would go, or null when the diff
+   * does not show these lines and GitHub would refuse one.
+   */
+  anchor: Anchor | null;
 }
 
 export interface DiffDoc {
@@ -172,7 +178,12 @@ const sentinelsToTags = (html: string): string =>
     .replaceAll(INS_CLOSE, "</ins>");
 
 /** Diff two Markdown documents and render every block of the result. */
-export function toDiffHtml(before: string, after: string, opts: MarkdownOptions = {}): DiffDoc {
+export interface DiffOptions extends MarkdownOptions {
+  /** Lines the patch will accept a comment on; omit for no anchors. */
+  commentable?: Commentable;
+}
+
+export function toDiffHtml(before: string, after: string, opts: DiffOptions = {}): DiffDoc {
   const beforeSrc = stripRefDefs(before);
   const afterSrc = stripRefDefs(after);
   const changes = align(splitBlocks(beforeSrc), splitBlocks(afterSrc));
@@ -220,17 +231,33 @@ export function toDiffHtml(before: string, after: string, opts: MarkdownOptions 
   const bef = renderBlockList(beforeSrcs, { ...opts, refsFrom: before });
   const aft = renderBlockList(afterSrcs, { ...opts, refsFrom: after });
 
-  const rows: DiffRow[] = changes.map((c, i) => ({
-    op: c.op,
-    kind: c.op === "removed" ? c.before.kind : c.after.kind,
-    unified: sentinelsToTags(uni.html[i]),
-    // The before column is a second copy of the document: it must not carry
-    // heading ids, or every anchor in the page would be ambiguous.
-    before: stripIds(sentinelsToTags(bef.html[i])),
-    after: sentinelsToTags(aft.html[i]),
-    marked: marked[i],
-    line: c.op === "removed" ? c.before.line : c.after.line,
-  }));
+  const rows: DiffRow[] = changes.map((c, i) => {
+    const block = c.op === "removed" ? c.before : c.after;
+    // A removed block only exists on the base side, so that is the only
+    // side a comment about it can hang on.
+    const side = c.op === "removed" ? "LEFT" : "RIGHT";
+    return {
+      op: c.op,
+      kind: block.kind,
+      unified: sentinelsToTags(uni.html[i]),
+      // The before column is a second copy of the document: it must not
+      // carry heading ids, or every anchor in the page would be ambiguous.
+      before: stripIds(sentinelsToTags(bef.html[i])),
+      after: sentinelsToTags(aft.html[i]),
+      marked: marked[i],
+      line: block.line,
+      anchor:
+        c.op === "same" || !opts.commentable
+          ? null
+          : // Only counted where it is used: most rows are unchanged.
+            anchorFor(
+              opts.commentable,
+              side,
+              block.line,
+              block.line + block.src.split("\n").length - 1,
+            ),
+    };
+  });
 
   // A heading is marked changed when its own row changed, or anything under
   // it did — that dot in the outline is what makes a long document scannable.

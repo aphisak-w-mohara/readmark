@@ -53,6 +53,7 @@
     [
       files.markdown.length > 1 ? `${files.markdown.length} Markdown files` : "",
       files.otherCount ? `${files.otherCount} other` : "",
+      rangeCount ? "commenting needs all commits" : "",
     ]
       .filter(Boolean)
       .join(" · "),
@@ -62,9 +63,14 @@
 <div id="prbar">
   <label class="pr-file" class:busy>
     <span class="sr-only">Changed Markdown file</span>
-    <select value={active?.filename ?? ""} onchange={pick} disabled={busy}>
+    <!-- `selected` per option rather than `value` on the select: the value
+         is applied before the options exist, so it silently does not stick
+         and the native menu opens with nothing current. -->
+    <select onchange={pick} disabled={busy}>
       {#each files.markdown as f (f.filename)}
-        <option value={f.filename}>{short(f.filename)}</option>
+        <option value={f.filename} selected={f.filename === active?.filename}>
+          {short(f.filename)}
+        </option>
       {/each}
     </select>
     <span class="pr-file-face" aria-hidden="true">

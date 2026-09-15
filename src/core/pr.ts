@@ -8,6 +8,14 @@
  * straight to api.github.com with a token.
  */
 import { SourceError, type FetchLike } from "./source";
+import {
+  commentPayload,
+  pendingPayload,
+  submitPayload,
+  type Anchor,
+  type DraftComment,
+  type ReviewEvent,
+} from "./review";
 
 export interface PrRef {
   owner: string;
@@ -20,6 +28,8 @@ export interface PrInfo extends PrRef {
   baseSha: string;
   headSha: string;
   url: string;
+  /** Who opened it. GitHub refuses a verdict on your own pull request. */
+  author: string;
 }
 
 export interface PrFile {
@@ -30,6 +40,8 @@ export interface PrFile {
   status: "added" | "removed" | "modified" | "renamed" | "changed" | "copied" | "unchanged";
   additions: number;
   deletions: number;
+  /** Unified diff for this file; absent for pure renames and huge files. */
+  patch?: string;
 }
 
 export interface PrFiles {
@@ -115,6 +127,7 @@ interface RawPr {
   html_url: string;
   base: { sha: string };
   head: { sha: string };
+  user: { login: string } | null;
 }
 
 /** Fetch a PR's metadata: title and the two commits to diff between. */
@@ -126,7 +139,22 @@ export async function fetchPr(ref: PrRef, fetchFn: FetchLike): Promise<PrInfo> {
     baseSha: raw.base.sha,
     headSha: raw.head.sha,
     url: raw.html_url,
+    author: raw.user?.login ?? "",
   };
+}
+
+/**
+ * Who the credential belongs to. Used only to keep a verdict off your own
+ * pull request, so a failure here returns null and the UI offers
+ * everything — a wrong guess must not take away a button that works.
+ */
+export async function fetchViewer(fetchFn: FetchLike): Promise<string | null> {
+  try {
+    const me = await getJson<{ login?: string }>(fetchFn, "/user");
+    return me.login ?? null;
+  } catch {
+    return null;
+  }
 }
 
 interface RawFile {
@@ -135,6 +163,7 @@ interface RawFile {
   status: PrFile["status"];
   additions: number;
   deletions: number;
+  patch?: string;
 }
 
 /**
@@ -155,6 +184,7 @@ function partition(files: RawFile[]): PrFiles {
       status: f.status,
       additions: f.additions,
       deletions: f.deletions,
+      patch: f.patch,
     });
   }
   return { markdown, otherCount };
@@ -324,4 +354,122 @@ export async function fetchSides(pr: PrInfo, file: PrFile, fetchFn: FetchLike): 
       : fetchSide(pr, file.filename, pr.headSha, fetchFn),
   ]);
   return { before, after };
+}
+
+/**
+ * Turn a write failure into something the reviewer can act on. A 403 is
+ * almost always a token without Pull requests: write; a 422 is an anchor
+ * GitHub will not take, usually because the pull request moved under you.
+ */
+type GhError = string | { message?: string; field?: string; code?: string; resource?: string };
+
+/**
+ * What GitHub said went wrong. Its 422s carry `errors` either as objects
+ * with a `message` or as bare strings, and reading only the first shape
+ * threw away the explanation — leaving the generic "Unprocessable
+ * Entity" and a guess about the cause in its place.
+ */
+function ghDetail(text: string): string {
+  let err;
+  try {
+    err = JSON.parse(text) as { message?: string; errors?: GhError[] };
+  } catch {
+    return ""; // a body we cannot read adds nothing to the message
+  }
+  const said = (e: GhError): string =>
+    typeof e === "string"
+      ? e
+      : (e.message ?? [e.resource, e.field, e.code].filter(Boolean).join(" "));
+  const reasons = (err.errors ?? []).map(said).filter(Boolean);
+  // The generic status text is worth saying only when nothing else was.
+  return reasons.length ? reasons.join("; ") : (err.message ?? "");
+}
+
+function writeError(status: number, detail: string): SourceError {
+  if (status === 403 || status === 401)
+    return new SourceError(
+      "http",
+      "GitHub refused the write. A token needs Pull requests: write to leave a review — read-only is enough to read one, but not to send one.",
+    );
+  // Only guess at the cause when GitHub gave none of its own: it usually
+  // names the field it refused, and "reload and try again" is wrong
+  // advice for a diff that is already current.
+  if (status === 422)
+    return new SourceError(
+      "http",
+      detail
+        ? `GitHub refused the review: ${detail}`
+        : "GitHub would not accept the comment's position, and gave no reason. The pull request may have moved since this diff was loaded — reload it and try again.",
+    );
+  return httpError(status);
+}
+
+async function post(fetchFn: FetchLike, path: string, body: unknown): Promise<unknown> {
+  let res;
+  try {
+    res = await fetchFn(path, { method: "POST", body: JSON.stringify(body) });
+  } catch {
+    throw new SourceError("net", "Could not reach GitHub. Nothing was sent; your draft is intact.");
+  }
+  const text = await res.text();
+  if (!res.ok) {
+    throw writeError(res.status, ghDetail(text));
+  }
+  return text ? JSON.parse(text) : null;
+}
+
+/**
+ * Send the whole review — every drafted comment, and the verdict.
+ *
+ * In two calls, because GitHub demands a summary on a one-shot COMMENT
+ * or REQUEST_CHANGES review but not on submitting a review that already
+ * exists. Creating the comments first and then passing the verdict is
+ * what lets the summary stay optional, as it is in GitHub's own UI.
+ */
+export async function submitReview(
+  ref: PrRef,
+  commitId: string,
+  event: ReviewEvent,
+  summary: string,
+  draft: DraftComment[],
+  fetchFn: FetchLike,
+): Promise<{ id: number; html_url: string }> {
+  const base = `/repos/${ref.owner}/${ref.repo}/pulls/${ref.number}/reviews`;
+  const pending = (await post(fetchFn, base, pendingPayload(commitId, draft))) as { id: number };
+  try {
+    const out = await post(fetchFn, `${base}/${pending.id}/events`, submitPayload(event, summary));
+    return out as { id: number; html_url: string };
+  } catch (err) {
+    // A pending review nobody submitted is invisible on the PR but real:
+    // left behind, the next attempt would stack a second copy of every
+    // comment on top of it.
+    await discard(fetchFn, `${base}/${pending.id}`);
+    throw err;
+  }
+}
+
+/** Best-effort cleanup: the caller is already reporting a failure. */
+async function discard(fetchFn: FetchLike, path: string): Promise<void> {
+  try {
+    await fetchFn(path, { method: "DELETE" });
+  } catch {
+    /* nothing useful to add to the error already being thrown */
+  }
+}
+
+/** Send one comment on its own, without opening a review. */
+export async function postComment(
+  ref: PrRef,
+  commitId: string,
+  path: string,
+  anchor: Anchor,
+  body: string,
+  fetchFn: FetchLike,
+): Promise<{ id: number; html_url: string }> {
+  const out = await post(
+    fetchFn,
+    `/repos/${ref.owner}/${ref.repo}/pulls/${ref.number}/comments`,
+    commentPayload(commitId, path, anchor, body),
+  );
+  return out as { id: number; html_url: string };
 }

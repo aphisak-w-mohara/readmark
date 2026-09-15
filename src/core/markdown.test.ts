@@ -48,8 +48,26 @@ describe("toHtml", () => {
   });
 
   test("recognized HTML tags pass through raw (the view layer's DOMPurify removes dangerous ones)", () => {
-    const r = toHtml("a <script>evil()</script> b");
-    expect(r.html).toContain("<script>evil()</script>");
+    const r = toHtml("a <b>bold</b> and <kbd>Ctrl</kbd> b");
+    expect(r.html).toContain("<b>bold</b>");
+    expect(r.html).toContain("<kbd>Ctrl</kbd>");
+  });
+
+  // A raw-text element named in prose is prose. Parked as a tag it
+  // becomes a real opener, and the parser reads the rest of the document
+  // as its body — a later real <style> is enough to defeat any check
+  // made after the fact, so it never becomes a tag in the first place.
+  test("a raw-text element named inline is text, not an opener", () => {
+    for (const tag of ["script", "style", "textarea", "title", "iframe"]) {
+      const r = toHtml(`Use the <${tag}> element.`);
+      expect(r.html).toContain(`&lt;${tag}&gt;`);
+      expect(r.html).not.toContain(`<${tag}>`);
+    }
+  });
+
+  // <pre> is not raw text to the parser, so it still passes through.
+  test("an inline <pre> still passes through", () => {
+    expect(toHtml("a <pre>x</pre> b").html).toContain("<pre>x</pre>");
   });
 
   test("nested + task lists", () => {
@@ -143,5 +161,81 @@ describe("toHtml", () => {
 
   test("raw HTML passes through unsanitized (view layer sanitizes it)", () => {
     expect(toHtml("<b>bold html</b>").html).toContain("<b>bold html</b>");
+  });
+});
+
+describe("markdown inside a container", () => {
+  // The splitter and the renderer once decided "does this close?" in two
+  // different ways. A trailing comment satisfied one and not the other, so
+  // the contents silently stopped rendering.
+  test("a comment after the closing tag does not stop the contents rendering", () => {
+    const html = toHtml(
+      [
+        "<details>",
+        "<summary>More</summary>",
+        "",
+        "- one",
+        "- two",
+        "",
+        "</details> <!-- end -->",
+      ].join("\n"),
+    ).html;
+    expect(html).toContain("<ul><li>one</li><li>two</li></ul>");
+  });
+
+  test("a table inside <details> renders, and the element stays whole", () => {
+    const html = toHtml(
+      [
+        "<details>",
+        "<summary>More</summary>",
+        "",
+        "| a | b |",
+        "| - | - |",
+        "| 1 | 2 |",
+        "",
+        "</details>",
+      ].join("\n"),
+    ).html;
+    expect(html).toContain("<details>");
+    expect(html).toContain("<summary>More</summary>");
+    expect(html).toContain("<table>");
+    // the close tag must be in the same rendered fragment as the open
+    expect(html.indexOf("</details>")).toBeGreaterThan(html.indexOf("<table>"));
+  });
+
+  test("a comment's body is passed through, not rendered", () => {
+    const { html, headings } = toHtml(
+      ["# Kept", "", "<!--", "## Old", "-->", "", "# After"].join("\n"),
+    );
+    expect(html).toContain("<!--\n## Old\n-->");
+    expect(html).not.toContain(">Old<");
+    expect(html).toContain("After");
+    // A commented-out heading is not in the document, so not in its outline.
+    expect(headings.map((h) => h.text)).toEqual(["Kept", "After"]);
+  });
+
+  test("a literal container's body is not parsed as Markdown", () => {
+    for (const tag of ["pre", "script", "style", "textarea"]) {
+      const src = [`<${tag}>`, "  indented *not emph*", "- not a list", `</${tag}>`].join("\n");
+      expect(toHtml(src).html).toBe(src);
+    }
+  });
+
+  // A heading the reader can never see must not reach the outline — and
+  // <title>'s would reach the browser tab as the document's name.
+  // containerEnd and the seal must agree on what an end tag is. When
+  // containerEnd read `</style x>` as text, the block stopped at the
+  // blank line and the tail re-entered as markup — DOMPurify then
+  // dropped the lot, losing both the element and its body.
+  test("a closer carrying attributes still ends the container", () => {
+    const src = ["<style>", ".a{color:red}", "", ".b{color:blue}", "</style x>"].join("\n");
+    expect(toHtml(src).html).toBe(src);
+  });
+
+  test("headings inside a literal container stay out of the outline", () => {
+    for (const tag of ["textarea", "title", "iframe", "noscript", "xmp"]) {
+      const { headings } = toHtml([`<${tag}>`, "# not a heading", `</${tag}>`].join("\n"));
+      expect(headings).toEqual([]);
+    }
   });
 });

@@ -2,6 +2,7 @@ import { test, expect, describe } from "bun:test";
 import {
   resolvePR,
   fetchPr,
+  fetchViewer,
   listMarkdownFiles,
   listMarkdownFilesBetween,
   listCommits,
@@ -9,6 +10,8 @@ import {
   currentLogin,
   lastReviewedCommit,
   fetchSides,
+  submitReview,
+  postComment,
   type PrInfo,
 } from "./pr";
 import { SourceError, type FetchLike } from "./source";
@@ -36,6 +39,7 @@ const PR: PrInfo = {
   baseSha: "base1",
   headSha: "head1",
   url: "https://github.com/o/r/pull/42",
+  author: "octocat",
 };
 
 describe("resolvePR", () => {
@@ -58,6 +62,19 @@ describe("resolvePR", () => {
   });
 });
 
+describe("fetchViewer", () => {
+  test("reads the login the credential belongs to", async () => {
+    const { fn } = fakeFetch({ "/user": { login: "octocat" } });
+    expect(await fetchViewer(fn)).toBe("octocat");
+  });
+
+  // Used only to take a button away, so not knowing must leave it there.
+  test("a failure is null, not a throw", async () => {
+    const { fn } = fakeFetch({});
+    expect(await fetchViewer(fn)).toBeNull();
+  });
+});
+
 describe("fetchPr", () => {
   test("reads the title and both commits", async () => {
     const { fn } = fakeFetch({
@@ -66,13 +83,30 @@ describe("fetchPr", () => {
         html_url: "https://github.com/o/r/pull/42",
         base: { sha: "b" },
         head: { sha: "h" },
+        user: { login: "octocat" },
       },
     });
     expect(await fetchPr({ owner: "o", repo: "r", number: 42 }, fn)).toMatchObject({
       title: "T",
       baseSha: "b",
       headSha: "h",
+      author: "octocat",
     });
+  });
+
+  // A PR whose author has since been deleted has a null user. No author
+  // means no match, which offers the verdict rather than hiding it.
+  test("a missing author is empty, not a crash", async () => {
+    const { fn } = fakeFetch({
+      "/repos/o/r/pulls/42": {
+        title: "T",
+        html_url: "u",
+        base: { sha: "b" },
+        head: { sha: "h" },
+        user: null,
+      },
+    });
+    expect((await fetchPr({ owner: "o", repo: "r", number: 42 }, fn)).author).toBe("");
   });
 
   test("a 404 explains that credentials may not cover the repo", async () => {
@@ -347,5 +381,163 @@ describe("last review", () => {
   test("currentLogin swallows a failure rather than blocking the diff", async () => {
     const { fn } = fakeFetch({});
     expect(await currentLogin(fn)).toBeNull();
+  });
+});
+
+describe("writing a review", () => {
+  const ref = { owner: "o", repo: "r", number: 42 };
+  const draft = [{ path: "a.md", side: "RIGHT" as const, line: 3, body: "a note" }];
+
+  /** Records what was sent, so the request body itself is the assertion. */
+  function recorder(status = 200, body = '{"id":1,"html_url":"u"}') {
+    const sent: { url: string; method?: string; body?: unknown }[] = [];
+    const fn: FetchLike = async (url, init) => {
+      sent.push({
+        url,
+        method: init?.method,
+        body: init?.body ? JSON.parse(init.body) : undefined,
+      });
+      return { ok: status < 400, status, text: async () => body };
+    };
+    return { fn, sent };
+  }
+
+  test("a review parks the draft, then passes the verdict", async () => {
+    const { fn, sent } = recorder();
+    await submitReview(ref, "headsha", "APPROVE", "", draft, fn);
+
+    expect(sent[0].url).toBe("/repos/o/r/pulls/42/reviews");
+    expect(sent[0].method).toBe("POST");
+    expect(sent[0].body).toEqual({
+      commit_id: "headsha",
+      comments: [{ path: "a.md", line: 3, side: "RIGHT", body: "a note" }],
+    });
+
+    expect(sent[1].url).toBe("/repos/o/r/pulls/42/reviews/1/events");
+    expect(sent[1].body).toEqual({ event: "APPROVE" });
+  });
+
+  /**
+   * The point of the two calls: a one-shot COMMENT review is refused
+   * without a summary, so sending the comments first is what lets the
+   * field stay empty.
+   */
+  test("commenting with no summary sends no body", async () => {
+    const { fn, sent } = recorder();
+    await submitReview(ref, "h", "COMMENT", "   ", draft, fn);
+    expect(sent[1].body).toEqual({ event: "COMMENT" });
+  });
+
+  test("a summary rides on the verdict, not on the comments", async () => {
+    const { fn, sent } = recorder();
+    await submitReview(ref, "h", "REQUEST_CHANGES", "please fix", draft, fn);
+    expect(sent[0].body).not.toHaveProperty("body");
+    expect(sent[1].body).toEqual({ event: "REQUEST_CHANGES", body: "please fix" });
+  });
+
+  /**
+   * A pending review is invisible on the pull request but real. Left
+   * behind by a failed verdict, the next attempt would park a second
+   * copy of every comment on top of it.
+   */
+  test("a verdict that fails takes its pending review with it", async () => {
+    const sent: { url: string; method?: string }[] = [];
+    const fn: FetchLike = async (url, init) => {
+      sent.push({ url, method: init?.method });
+      const failing = url.endsWith("/events");
+      return {
+        ok: !failing,
+        status: failing ? 422 : 200,
+        text: async () =>
+          failing
+            ? '{"message":"x","errors":["Can not approve your own pull request"]}'
+            : '{"id":7}',
+      };
+    };
+    expect(submitReview(ref, "h", "APPROVE", "", draft, fn)).rejects.toThrow(
+      /Can not approve your own pull request/,
+    );
+    await new Promise((r) => setTimeout(r, 0));
+    expect(sent.map((s) => `${s.method ?? "POST"} ${s.url}`)).toEqual([
+      "POST /repos/o/r/pulls/42/reviews",
+      "POST /repos/o/r/pulls/42/reviews/7/events",
+      "DELETE /repos/o/r/pulls/42/reviews/7",
+    ]);
+  });
+
+  test("cleanup failing does not replace the real error", async () => {
+    const fn: FetchLike = async (url) => {
+      if (url.endsWith("/events"))
+        return { ok: false, status: 422, text: async () => '{"message":"the real reason"}' };
+      if (url.endsWith("/reviews/7")) throw new Error("delete blew up");
+      return { ok: true, status: 200, text: async () => '{"id":7}' };
+    };
+    expect(submitReview(ref, "h", "APPROVE", "", draft, fn)).rejects.toThrow(/the real reason/);
+  });
+
+  test("a single comment goes to the comments endpoint", async () => {
+    const { fn, sent } = recorder();
+    await postComment(ref, "headsha", "a.md", { side: "RIGHT", line: 7 }, "just this", fn);
+    expect(sent[0].url).toBe("/repos/o/r/pulls/42/comments");
+    expect(sent[0].body).toEqual({
+      commit_id: "headsha",
+      path: "a.md",
+      line: 7,
+      side: "RIGHT",
+      body: "just this",
+    });
+  });
+
+  test("a 403 names the permission the token is missing", async () => {
+    const { fn } = recorder(403, '{"message":"Resource not accessible by personal access token"}');
+    expect(submitReview(ref, "h", "APPROVE", "", draft, fn)).rejects.toThrow(
+      /Pull requests: write/,
+    );
+  });
+
+  test("a 422 quotes GitHub when it names the field", async () => {
+    const { fn } = recorder(
+      422,
+      '{"message":"Validation Failed","errors":[{"message":"line must be part of the diff"}]}',
+    );
+    expect(submitReview(ref, "h", "COMMENT", "s", draft, fn)).rejects.toThrow(
+      /line must be part of the diff/,
+    );
+  });
+
+  /**
+   * The shape GitHub actually sent for a verdict on your own pull
+   * request. Read as `errors[0].message` it is undefined, and the reason
+   * was replaced by a guess that the diff had moved — which sent the
+   * reader off to reload a diff that was already current.
+   */
+  test("a 422 whose errors are plain strings is still quoted", async () => {
+    const { fn } = recorder(
+      422,
+      '{"message":"Unprocessable Entity","errors":["Review Can not request changes on your own pull request"]}',
+    );
+    const err = submitReview(ref, "h", "REQUEST_CHANGES", "s", draft, fn);
+    expect(err).rejects.toThrow(/Can not request changes on your own pull request/);
+    expect(err).rejects.not.toThrow(/probably moved/);
+  });
+
+  test("several reasons are all reported", async () => {
+    const { fn } = recorder(422, '{"message":"x","errors":["first reason","second reason"]}');
+    expect(submitReview(ref, "h", "COMMENT", "s", draft, fn)).rejects.toThrow(
+      /first reason; second reason/,
+    );
+  });
+
+  // Only then is a guess the best we can do.
+  test("a 422 with no reason at all falls back to the stale-diff guess", async () => {
+    const { fn } = recorder(422, '{"message":""}');
+    expect(submitReview(ref, "h", "COMMENT", "s", draft, fn)).rejects.toThrow(/may have moved/);
+  });
+
+  test("a network failure says the draft is safe", async () => {
+    const fn: FetchLike = async () => {
+      throw new Error("offline");
+    };
+    expect(submitReview(ref, "h", "APPROVE", "", draft, fn)).rejects.toThrow(/draft is intact/);
   });
 });

@@ -81,6 +81,16 @@ A file that exists on only one side — newly added, or deleted — is not washe
 
 Rewrapping is invisible: blocks are matched on their words with whitespace collapsed, so a reflowed paragraph is the same paragraph. Code blocks, raw HTML, and edits that change a block's structure (a bullet list turned numbered) are flagged whole rather than word-marked, because word marks there would be misleading.
 
+### Reviewing
+
+Blocks the pull request changed carry a `+` in the margin. It opens a comment box anchored to the line GitHub will store it against — `R94` for the new side, `L94` for the old — with Write and Preview tabs, where Preview renders through the reader's own Markdown pipeline rather than a form's.
+
+Comments collect as a pending review and go up in one request with **Approve**, **Request changes** or **Comment**; a single remark can be posted on its own with **Comment** in the box. `c` opens the box on the block you are looking at, `⌘/Ctrl+Enter` saves the draft, `Escape` cancels.
+
+Commenting is offered when you are viewing all commits, not a range: a range's line numbers belong to that range's head rather than the pull request's, so an anchor taken from one can name a line GitHub will not accept. Only changed blocks are offered, because GitHub only accepts a comment on a line its diff actually shows — the commentable lines are read out of the patch, so the affordance appears exactly where it will work rather than failing on submit. Reviewing needs a token with **Pull requests: write**; a read-only one reads fine and is refused at submit, with the draft kept.
+
+Not yet: seeing comments other people already left, replying, and resolving.
+
 ### Access
 
 Two ways to authenticate, and they are not equivalent:

@@ -1,13 +1,44 @@
 <script lang="ts">
   import type { DiffDoc, DiffRow } from "../core/diff";
   import type { Layout, Scope } from "../state.svelte";
+  import type { Anchor, DraftComment } from "../core/review";
+  import type { Side } from "../core/patch";
+  import { anchorKey } from "../core/review";
+  import CommentBox from "./CommentBox.svelte";
 
   interface Props {
     diff: DiffDoc;
     layout: Layout;
     scope: Scope;
+    /** Null while there is nothing to comment on (no PR file open). */
+    path?: string | null;
+    draft?: DraftComment[];
+    busy?: boolean;
+    onSave?: (anchor: Anchor, body: string) => void;
+    onPostNow?: (anchor: Anchor, body: string) => void;
   }
-  let { diff, layout, scope }: Props = $props();
+  let {
+    diff,
+    layout,
+    scope,
+    path = null,
+    draft = [],
+    busy = false,
+    onSave,
+    onPostNow,
+  }: Props = $props();
+
+  /** Which row has the editor open; row objects are stable within a diff. */
+  let openRow = $state<DiffRow | null>(null);
+
+  // Built once per draft change rather than scanned per row per render.
+  const bodies = $derived(new Map(draft.map((c) => [anchorKey(c.path, c), c.body])));
+  const bodyAt = (a: Anchor) => (path ? (bodies.get(anchorKey(path, a)) ?? "") : "");
+
+  /** Opened from here and from App's `c` shortcut, which owns the keymap. */
+  export function openComment(row: DiffRow) {
+    if (row.anchor && path && onSave) openRow = row;
+  }
 
   /** Runs of untouched blocks collapse into one spacer the reader can open. */
   interface Fold {
@@ -19,10 +50,11 @@
 
   let opened = $state(new Set<number>());
 
-  // Reset the expanded folds whenever a different document is shown.
+  // A new document invalidates both the open editor and the expanded folds.
   $effect(() => {
     // oxlint-disable-next-line no-unused-expressions -- track the document identity
     diff;
+    openRow = null;
     opened = new Set();
   });
 
@@ -58,6 +90,7 @@
   });
 
   const label = (n: number) => `${n} unchanged block${n === 1 ? "" : "s"}`;
+  const itemKey = (item: Item) => (item.kind === "row" ? "r" + item.index : "f" + item.from);
 
   // A file that exists on only one side has nothing to compare against, so
   // it reads as the document it is, with the fact stated once at the top.
@@ -74,25 +107,70 @@
   <p class="diff-banner" data-whole={diff.whole}>{banner}</p>
 {/if}
 
+{#snippet foldBtn(item: Fold, span: boolean)}
+  <button class="diff-fold" class:span onclick={() => (opened = new Set([...opened, item.from]))}>
+    ⋯ {label(item.rows.length)}
+  </button>
+{/snippet}
+
+<!--
+  The one place a block's HTML is rendered. Passing the side it is being
+  drawn on keeps the affordance on the column the anchor actually lives
+  in, and means a new branch cannot show content without it.
+-->
+{#snippet commentSlot(row: DiffRow, html: string, side?: Side)}
+  {@const a = path && onSave && (!side || row.anchor?.side === side) ? row.anchor : null}
+  {#if a}
+    {@const has = Boolean(bodyAt(a))}
+    <button
+      class="diff-add"
+      class:has
+      title={has ? "Edit your comment" : "Comment on this block"}
+      aria-label={has ? "Edit your comment" : "Comment on this block"}
+      onclick={() => (openRow = openRow === row ? null : row)}
+    >
+      {has ? "●" : "+"}
+    </button>
+  {/if}
+  {@html html}
+  {#if a && path && onSave && openRow === row}
+    <CommentBox
+      anchor={a}
+      {path}
+      body={bodyAt(a)}
+      hasDraft={draft.length > 0}
+      {busy}
+      onSave={(b) => {
+        onSave(a, b);
+        openRow = null;
+      }}
+      onPostNow={(b) => {
+        onPostNow?.(a, b);
+        openRow = null;
+      }}
+      onCancel={() => (openRow = null)}
+    />
+  {/if}
+{/snippet}
+
 {#if diff.whole}
   {#each diff.rows as row, i (i)}
-    <div class="diff-row">{@html diff.whole === "removed" ? row.before : row.after}</div>
+    <!-- The blocks are still in the diff, so they still carry comments. -->
+    <div class="diff-row">{@render commentSlot(row, row.unified)}</div>
   {/each}
 {:else if layout === "unified"}
-  {#each items as item (item.kind === "row" ? "r" + item.index : "f" + item.from)}
+  {#each items as item (itemKey(item))}
     {#if item.kind === "fold"}
       {#if opened.has(item.from)}
         {#each item.rows as row, i (i)}
-          <div class="diff-row" data-op="same">{@html row.unified}</div>
+          <div class="diff-row" data-op="same">{@render commentSlot(row, row.unified)}</div>
         {/each}
       {:else}
-        <button class="diff-fold" onclick={() => (opened = new Set([...opened, item.from]))}>
-          ⋯ {label(item.rows.length)}
-        </button>
+        {@render foldBtn(item, false)}
       {/if}
     {:else}
       <div class="diff-row" data-op={item.row.op} data-marked={item.row.marked}>
-        {@html item.row.unified}
+        {@render commentSlot(item.row, item.row.unified)}
       </div>
     {/if}
   {/each}
@@ -100,29 +178,28 @@
   <div class="diff-split">
     <div class="diff-col-head">Before</div>
     <div class="diff-col-head">After</div>
-    {#each items as item (item.kind === "row" ? "r" + item.index : "f" + item.from)}
+    {#each items as item (itemKey(item))}
       {#if item.kind === "fold"}
         {#if opened.has(item.from)}
           {#each item.rows as row, i (i)}
-            <div class="diff-side is-before" data-op="same">{@html row.before}</div>
-            <div class="diff-side is-after" data-op="same">{@html row.after}</div>
+            <div class="diff-side is-before" data-op="same">
+              {@render commentSlot(row, row.before, "LEFT")}
+            </div>
+            <div class="diff-side is-after" data-op="same">
+              {@render commentSlot(row, row.after, "RIGHT")}
+            </div>
           {/each}
         {:else}
-          <button
-            class="diff-fold span"
-            onclick={() => (opened = new Set([...opened, item.from]))}
-          >
-            ⋯ {label(item.rows.length)}
-          </button>
+          {@render foldBtn(item, true)}
         {/if}
       {:else}
         <div class="diff-side is-before" data-op={item.row.op === "added" ? "absent" : item.row.op}>
-          {#if item.row.op === "added"}<span class="diff-absent">—</span>{:else}{@html item.row
-              .before}{/if}
+          {#if item.row.op === "added"}<span class="diff-absent">—</span>
+          {:else}{@render commentSlot(item.row, item.row.before, "LEFT")}{/if}
         </div>
         <div class="diff-side is-after" data-op={item.row.op === "removed" ? "absent" : item.row.op}>
-          {#if item.row.op === "removed"}<span class="diff-absent">—</span>{:else}{@html item.row
-              .after}{/if}
+          {#if item.row.op === "removed"}<span class="diff-absent">—</span>
+          {:else}{@render commentSlot(item.row, item.row.after, "RIGHT")}{/if}
         </div>
       {/if}
     {/each}

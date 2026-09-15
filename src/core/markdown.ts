@@ -5,9 +5,18 @@
  * is injected (default: escape-only). That internal seam lets tests drive the
  * parser with a fake highlighter and assert code blocks are wired correctly.
  */
-import { escapeHtml, escapeAttr, safeUrl } from "./escape";
+import { escapeHtml, escapeAttr, safeUrl, RAW_TEXT } from "./escape";
 import { makeSlugger } from "./slug";
-import { splitBlocks, fenceParts, stripInline, afterText, type Block } from "./blocks";
+import {
+  splitBlocks,
+  fenceParts,
+  stripInline,
+  afterText,
+  containerEnd,
+  tagOf,
+  LITERAL,
+  type Block,
+} from "./blocks";
 
 export interface Heading {
   level: number;
@@ -77,10 +86,18 @@ function inline(src: string): string {
   });
   // Park valid-looking HTML tags (and comments) so raw HTML passes through; a
   // stray "<" is still escaped below. The view layer sanitizes the result.
-  t = t.replace(/<\/?[a-zA-Z][a-zA-Z0-9-]*(?:\s[^<>]*)?\/?>|<!--[\s\S]*?-->/g, (m) => {
-    tags.push(m);
-    return SENT3 + (tags.length - 1) + SENT3;
-  });
+  t = t.replace(
+    /<\/?([a-zA-Z][a-zA-Z0-9-]*)(?:\s[^<>]*)?\/?>|<!--[\s\S]*?-->/g,
+    (m, name?: string) => {
+      // Prose naming a raw-text element — "use the <style> element" — is
+      // prose. Parked, it becomes a real opener that swallows the rest of
+      // the document, and nothing downstream can tell it from one the
+      // author meant. Left here, escapeHtml below turns it into text.
+      if (name && RAW_TEXT.includes(name.toLowerCase())) return m;
+      tags.push(m);
+      return SENT3 + (tags.length - 1) + SENT3;
+    },
+  );
   t = escapeHtml(t);
   // angle autolinks: <https://example.com>
   t = t.replace(/&lt;(https?:\/\/[^\s&<>]+)&gt;/g, (_m, url: string) => stash(anchor(url, url)));
@@ -266,8 +283,22 @@ function renderBlock(b: Block, ctx: Ctx): string {
     }
     case "list":
       return renderList(b.src.split("\n"));
-    case "html":
-      return b.src;
+    case "html": {
+      // A container block keeps its open and close tags together — so the
+      // element survives being one row in the diff — while its contents
+      // still go through the parser, which is the whole point of writing
+      // a table or a list inside <details>.
+      const lines = b.src.split("\n");
+      // No tag at all is a comment or a stray closing tag; a LITERAL body
+      // is text. Neither is Markdown, so neither goes back to the parser.
+      // (A dangling opener is neutralised at the sanitize seam, which is
+      // the only place that also sees the ones inline text produces.)
+      const tag = tagOf(lines[0]);
+      if (!tag || LITERAL.has(tag)) return b.src;
+      // The same answer the splitter used, not a second guess at it.
+      if (containerEnd(lines, 0) !== lines.length || lines.length < 3) return b.src;
+      return `${lines[0]}\n${parseBlocks(lines.slice(1, -1).join("\n"), ctx)}\n${lines[lines.length - 1]}`;
+    }
     default:
       return `<p>${inline(b.src)}</p>`;
   }

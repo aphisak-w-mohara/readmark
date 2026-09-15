@@ -436,6 +436,8 @@ textarea {
 
 #stage {
   container: stage / inline-size;
+  /* Every jump into the document clears the bars above it. */
+  scroll-padding-top: 80px;
   flex: 1 1 auto;
   overflow-y: auto;
   background: var(--mat);
@@ -724,6 +726,8 @@ textarea {
 .md .mermaid svg {
   max-width: 100%;
   height: auto;
+  /* Must match the family mermaid measured with, or labels overflow. */
+  font-family: var(--ui);
 }
 .md .mermaid-src {
   width: 100%;
@@ -1937,6 +1941,261 @@ a#docTitle:hover .pr-subject {
   .diff-side[data-op="absent"] {
     display: none;
   }
+}
+
+/* ---- review comments ---- */
+
+/* Quiet until wanted: the margin affordance appears on hover or focus,
+   and stays put once a comment is actually there. */
+.diff-add {
+  position: absolute;
+  left: -34px;
+  width: 21px;
+  height: 21px;
+  border-radius: 7px;
+  background: var(--mat);
+  border: 1px solid var(--rule);
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition:
+    opacity 0.12s,
+    color 0.12s,
+    border-color 0.12s;
+}
+/* Both row shapes anchor the affordance: a split cell is the row, so
+   without this the button positions against a distant ancestor and lands
+   off the page entirely. */
+.diff-row,
+.diff-side {
+  position: relative;
+}
+.diff-row:hover .diff-add,
+.diff-side:hover .diff-add,
+.diff-add:focus-visible,
+.diff-add.has {
+  opacity: 1;
+}
+/* The split columns have less margin to spare than the single column. */
+.diff-split .diff-add {
+  left: -26px;
+}
+.diff-add:hover {
+  color: var(--ink);
+  border-color: var(--ink-2);
+}
+.diff-add.has {
+  color: var(--chg-edge);
+  border-color: var(--chg-edge);
+  font-size: 9px;
+}
+
+.cbox {
+  margin: 12px 0 14px;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  background: var(--mat);
+  font-family: var(--ui);
+  overflow: hidden;
+}
+.cbox-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--rule);
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.cbox-anchor {
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: var(--codebg);
+  color: var(--ink);
+}
+.cbox-path {
+  margin-left: auto;
+  font-size: 11px;
+  opacity: 0.8;
+}
+.cbox-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 7px 9px 0;
+}
+.cbox-tabs button {
+  font: inherit;
+  font-size: 11.5px;
+  padding: 4px 12px;
+  border-radius: 7px 7px 0 0;
+  color: var(--ink-2);
+}
+.cbox-tabs button.on {
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow:
+    inset 1px 0 0 var(--rule),
+    inset -1px 0 0 var(--rule),
+    inset 0 1px 0 var(--rule);
+}
+.cbox-tabs button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.cbox-body {
+  padding: 0 10px 10px;
+  border-top: 1px solid var(--rule);
+  background: var(--paper);
+}
+.cbox-body textarea {
+  display: block;
+  width: 100%;
+  min-height: 72px;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.5;
+  resize: vertical;
+  outline: none;
+}
+.cbox-body textarea:focus {
+  border-color: var(--chg-edge);
+}
+.cbox-preview {
+  margin-top: 10px;
+  padding: 2px 2px 4px;
+  font-size: 0.92em;
+}
+.cbox-preview > :first-child {
+  margin-top: 0;
+}
+.cbox-preview > :last-child {
+  margin-bottom: 0;
+}
+.cbox-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-top: 1px solid var(--rule);
+}
+.cbox-hint {
+  margin-right: auto;
+  font-size: 11px;
+  color: var(--ink-2);
+  opacity: 0.85;
+}
+.cbox-foot .btn {
+  font-size: 12px;
+  padding: 5px 12px;
+}
+
+/* The submit bar sits above the status bar, in chrome like everything
+   else that is not the document. */
+#reviewbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  height: 38px;
+  background: var(--g850);
+  border-top: 1px solid var(--line);
+  font-family: var(--ui);
+  font-size: 12px;
+  color: var(--mist-2);
+}
+.rv-spacer {
+  flex: 1 1 auto;
+}
+.rv-count {
+  color: var(--brass-hi);
+}
+.rv-done {
+  color: var(--mist);
+}
+.rv-note {
+  color: var(--mist);
+  font-size: 0.92em;
+}
+.rv-summary {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--g900);
+  color: var(--mist);
+  font: inherit;
+  outline: none;
+}
+.rv-summary:focus {
+  border-color: var(--brass);
+}
+.rv-btn {
+  height: 26px;
+  padding: 0 11px;
+  border-radius: 8px;
+  color: var(--mist-2);
+  font: inherit;
+  font-size: 11.5px;
+  transition:
+    background 0.13s,
+    color 0.13s;
+}
+.rv-btn:hover:not(:disabled) {
+  background: var(--g700);
+  color: var(--mist);
+}
+.rv-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.rv-btn.approve,
+.rv-btn.primary {
+  background: var(--brass);
+  color: #1a1408;
+  font-weight: 600;
+}
+.rv-btn.approve:hover:not(:disabled),
+.rv-btn.primary:hover:not(:disabled) {
+  background: var(--brass);
+  color: #1a1408;
+  filter: brightness(1.08);
+}
+.rv-link {
+  color: var(--brass-hi);
+  font: inherit;
+  font-size: 11.5px;
+  text-decoration: underline;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+#reviewerr {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  background: #3a2320;
+  border-top: 1px solid #5c3a34;
+  color: #f0c8c4;
+  font-family: var(--ui);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 /* ---- auth panel in the Open modal ---- */

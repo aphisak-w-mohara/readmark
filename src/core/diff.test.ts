@@ -1,6 +1,7 @@
 import { test, expect, describe } from "bun:test";
 import { tokenize, wordDiff, toDiffHtml } from "./diff";
 import { toHtml } from "./markdown";
+import { parsePatch } from "./patch";
 
 const DEL = "\u0004";
 const DEL_END = "\u0005";
@@ -252,5 +253,58 @@ describe("whole-file changes", () => {
 
   test("two empty sides are not a whole-file change", () => {
     expect(toDiffHtml("", "").whole).toBeNull();
+  });
+});
+
+describe("comment anchors", () => {
+  // A three-block document; only the middle block is inside the hunk.
+  const BEFORE = "# Title\n\nold middle\n\ntail stays";
+  const AFTER = "# Title\n\nnew middle\n\ntail stays";
+  // after-file lines: 1 heading, 3 middle, 5 tail
+  const commentable = parsePatch(["@@ -3,1 +3,1 @@", "-old middle", "+new middle"].join("\n"));
+
+  test("no commentable set means no anchors at all", () => {
+    const d = toDiffHtml(BEFORE, AFTER);
+    expect(d.rows.every((r) => r.anchor === null)).toBe(true);
+  });
+
+  test("an unchanged block never carries an anchor", () => {
+    const d = toDiffHtml(BEFORE, AFTER, { commentable });
+    const same = d.rows.filter((r) => r.op === "same");
+    expect(same.length).toBeGreaterThan(0);
+    expect(same.every((r) => r.anchor === null)).toBe(true);
+  });
+
+  test("a changed block inside the hunk anchors on the right", () => {
+    const d = toDiffHtml(BEFORE, AFTER, { commentable });
+    const changed = d.rows.find((r) => r.op === "changed");
+    expect(changed?.anchor).toEqual({ side: "RIGHT", line: 3 });
+  });
+
+  test("a changed block outside every hunk has no anchor", () => {
+    // The hunk covers line 3, but this document's change is at line 5.
+    const c = parsePatch(["@@ -3,1 +3,1 @@", "-x", "+y"].join("\n"));
+    const d = toDiffHtml("# T\n\nkeep\n\nold tail", "# T\n\nkeep\n\nnew tail", { commentable: c });
+    const changed = d.rows.find((r) => r.op === "changed");
+    expect(changed?.line).toBe(5);
+    expect(changed?.anchor).toBeNull();
+  });
+
+  test("a removed block anchors on the left", () => {
+    const c = parsePatch(["@@ -3,1 +2,0 @@", "-gone paragraph"].join("\n"));
+    const d = toDiffHtml("# T\n\ngone paragraph", "# T", { commentable: c });
+    const removed = d.rows.find((r) => r.op === "removed");
+    expect(removed?.anchor).toEqual({ side: "LEFT", line: 3 });
+  });
+
+  test("a multi-line block anchors across its whole range", () => {
+    const c = parsePatch(
+      ["@@ -3,2 +3,2 @@", "-one two", "-three four", "+one edited", "+three four"].join("\n"),
+    );
+    const d = toDiffHtml("# T\n\none two\nthree four", "# T\n\none edited\nthree four", {
+      commentable: c,
+    });
+    const changed = d.rows.find((r) => r.op === "changed");
+    expect(changed?.anchor).toEqual({ side: "RIGHT", line: 4, startLine: 3 });
   });
 });

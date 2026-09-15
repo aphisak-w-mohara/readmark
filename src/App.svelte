@@ -12,10 +12,12 @@
   import PrBar from "./components/PrBar.svelte";
   import DiffView from "./components/DiffView.svelte";
   import CommitPicker from "./components/CommitPicker.svelte";
+  import ReviewBar from "./components/ReviewBar.svelte";
   import type { PrFile } from "./core/pr";
   import type { Scope } from "./state.svelte";
 
   let stageEl = $state<HTMLElement>();
+  let diffView = $state<DiffView>();
   let articleEl = $state<HTMLElement>();
 
   let progress = $state(0);
@@ -26,17 +28,12 @@
   let sourceOpen = $state(false);
   let commitsOpen = $state(false);
 
-  const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   // opening document
   store.load(SAMPLE);
 
   // Does this origin have a sign-in backend? A static build does not.
   store.checkSession();
-
-
-
-
 
   let changeIndex = $state(0);
 
@@ -65,11 +62,16 @@
     const blocks = [...articleEl.querySelectorAll<HTMLElement>(".mermaid")];
     if (!blocks.length) return;
     const mermaid = (await import("mermaid")).default;
+    // A concrete stack, not "inherit": mermaid sizes every node box by
+    // measuring its label in the configured font, so if that disagrees
+    // with what actually paints, long labels are clipped by their own box.
+    const ui =
+      getComputedStyle(articleEl).getPropertyValue("--ui").trim() || "system-ui, sans-serif";
     mermaid.initialize({
       startOnLoad: false,
       theme: dark ? "dark" : "neutral",
       securityLevel: "strict",
-      fontFamily: "inherit",
+      fontFamily: ui,
     });
     for (const el of blocks) {
       const code = el.dataset.src ?? el.querySelector(".mermaid-src")?.textContent ?? "";
@@ -175,31 +177,32 @@
     applyScroll();
   }
 
-  /** Anchors for the change-to-change jump: every row that is not untouched. */
+  /**
+   * The elements `j`/`k` step through — one per changed row, in row order.
+   * Split renders a changed row on both sides, so only the after side is
+   * taken: this list shares `changeIndex` with `changeRows` and the two
+   * drifting is what sends `c` to the wrong block.
+   */
   function changeEls(): HTMLElement[] {
-    if (!articleEl) return [];
+    if (!articleEl || !changeCount) return [];
     return [
       ...articleEl.querySelectorAll<HTMLElement>(
-        '.diff-row:not([data-op="same"]), .diff-side[data-op="changed"], .diff-side[data-op="added"], .diff-side[data-op="removed"]',
+        '.diff-row:not([data-op="same"]), .diff-side.is-after[data-op="changed"], .diff-side[data-op="added"], .diff-side[data-op="removed"]',
       ),
-    ].filter((el, i, all) => i === 0 || el !== all[i - 1]);
+    ];
   }
 
   function stepChange(delta: number) {
     const els = changeEls();
-    if (!els.length || !stageEl) return;
-    const next = (changeIndex + delta + els.length) % els.length;
-    changeIndex = next;
-    stageEl.scrollTo({
-      top: els[next].offsetTop - 80,
-      behavior: reduceMotion ? "auto" : "smooth",
-    });
+    if (!els.length) return;
+    changeIndex = (changeIndex + delta + els.length) % els.length;
+    els[changeIndex].scrollIntoView();
   }
 
+  // #stage owns the easing (scroll-behavior, with its own reduced-motion
+  // override) and the offset (scroll-padding-top), so these need neither.
   function jump(id: string) {
-    const el = document.getElementById(id);
-    if (!el || !stageEl) return;
-    stageEl.scrollTo({ top: el.offsetTop - 40, behavior: reduceMotion ? "auto" : "smooth" });
+    document.getElementById(id)?.scrollIntoView();
   }
 
   function onCopy(e: MouseEvent) {
@@ -256,13 +259,29 @@
     if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
     if (e.key === "j") stepChange(1);
     else if (e.key === "k") stepChange(-1);
+    // `c` comments on the change the cursor is already on, rather than
+    // re-deriving "what am I looking at" from layout reads.
+    else if (e.key === "c") {
+      const row = changeRows[changeIndex];
+      if (row) {
+        e.preventDefault();
+        // The editor takes focus, so it must be somewhere visible — but
+        // only move if it is not already: `c` is usually pressed on the
+        // block being read.
+        changeEls()[changeIndex]?.scrollIntoView({ block: "nearest" });
+        diffView?.openComment(row);
+      }
+    }
   }
 
-  // Nothing to step between when every block is a change: a wholly new or
-  // deleted file is read straight through.
-  const changeCount = $derived(
-    store.diff && !store.diff.whole ? store.diff.rows.filter((r) => r.op !== "same").length : 0,
-  );
+  /**
+   * The rows `j`/`k` step through and `c` comments on, in document order.
+   * A wholly new or deleted file has no untouched rows to exclude, so it
+   * yields all of them — every block there takes a comment, and the
+   * keyboard should reach what the mouse can.
+   */
+  const changeRows = $derived(store.diff ? store.diff.rows.filter((r) => r.op !== "same") : []);
+  const changeCount = $derived(changeRows.length);
 
   // How many commits the current range covers; 0 means the whole PR.
   const rangeCount = $derived.by(() => {
@@ -329,7 +348,7 @@
       {changeIndex}
       {changeCount}
       commitCount={store.commits.length}
-      rangeCount={rangeCount}
+      {rangeCount}
       onCommits={() => (commitsOpen = true)}
       onFile={pickFile}
       onLayout={(l) => (store.layout = l)}
@@ -351,7 +370,17 @@
           bind:this={articleEl}
         >
           {#if store.mode === "diff" && store.diff}
-            <DiffView diff={store.diff} layout={store.layout} scope={store.scope} />
+            <DiffView
+              bind:this={diffView}
+              diff={store.diff}
+              layout={store.layout}
+              scope={store.scope}
+              path={store.activeFile?.filename ?? null}
+              draft={store.draft}
+              busy={store.submitting}
+              onSave={(a, b) => store.setComment(a, b)}
+              onPostNow={(a, b) => store.postOne(a, b)}
+            />
           {:else}
             {@html store.doc.html}
           {/if}
@@ -359,6 +388,21 @@
       </div>
     </main>
   </div>
+
+  {#if store.mode === "diff" && store.commenting && (store.draft.length || store.submitted || store.reviewError)}
+    <ReviewBar
+      count={store.draft.length}
+      ownPr={store.ownPr}
+      busy={store.submitting}
+      error={store.reviewError}
+      submitted={store.submitted}
+      onSubmit={(e, summary) => store.submitReview(e, summary)}
+      onDismiss={() => {
+        store.reviewError = null;
+        store.submitted = null;
+      }}
+    />
+  {/if}
 
   <StatusBar title={store.doc.title} {words} {minutes} pct={Math.round(progress)} />
 

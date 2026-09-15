@@ -10,6 +10,8 @@
  * Pure: a string in, a list of source slices out. No DOM, no IO.
  */
 
+import { RAW_TEXT, NAME_END } from "./escape";
+
 export type BlockKind = "heading" | "para" | "list" | "code" | "quote" | "table" | "html" | "hr";
 
 export interface Block {
@@ -82,6 +84,73 @@ export function stripMarks(s: string): string {
 }
 
 const isBlank = (l: string) => /^\s*$/.test(l);
+
+/** Elements that never wrap content, so they cannot span a blank line. */
+const VOID = new Set(
+  "area base br col embed hr img input link meta param source track wbr".split(" "),
+);
+
+/**
+ * Elements whose body is literal text, never Markdown. Beyond mangling
+ * the text, parsing these puts headings the reader can never see into the
+ * outline — and <title>'s into the browser tab.
+ *
+ * <pre> is the one addition to the tokenizer's raw-text set: its body is
+ * ordinary markup to a browser, but it is still not Markdown.
+ */
+export const LITERAL = new Set([...RAW_TEXT, "pre"]);
+
+/** A line opening an HTML comment, whose body is not even text. */
+const COMMENT = /^\s*<!--/;
+
+/** The tag a line opens, lowercased, or undefined if it opens none. */
+export const tagOf = (line: string): string | undefined =>
+  line.match(/^\s*<([a-zA-Z][\w-]*)/)?.[1].toLowerCase();
+
+/**
+ * Where the container opened at `start` closes, as an exclusive end index,
+ * or null when this is not a closed container.
+ *
+ * A container that wraps content — <details> around a table, say — has
+ * blank lines inside it, and ending the block at the first one splits the
+ * element apart: rendered a block at a time, the opening tag and its
+ * contents become siblings and the element silently stops working.
+ *
+ * Both the splitter and the renderer ask this, so they cannot disagree
+ * about it.
+ */
+export function containerEnd(lines: string[], start: number): number | null {
+  // A comment closes on a literal, not on a matching tag, so it needs its
+  // own scan — and it is the container that most needs one: left open, the
+  // browser reads the rest of the page as its body.
+  if (COMMENT.test(lines[start])) {
+    for (let n = start; n < lines.length; n++) if (lines[n].includes("-->")) return n + 1;
+    return null;
+  }
+  const tag = tagOf(lines[start]);
+  if (!tag || VOID.has(tag) || /\/>\s*$/.test(lines[start])) return null;
+  const openRe = new RegExp(`<${tag}(?=[\\s/>]|$)`, "gi");
+  // The same end tag the seal recognises: `</details x>` closes, and
+  // reading it as text here left the contents to be parsed as Markdown.
+  const closeRe = new RegExp(`</${tag}(?=${NAME_END})[^>]*>`, "gi");
+  let depth = 0;
+  for (let n = start; n < lines.length; n++) {
+    // Depth only moves on lines with a tag; skipping the rest keeps an
+    // unclosed opener from costing a full two-regex scan of every line.
+    if (!lines[n].includes("<")) continue;
+    depth += (lines[n].match(openRe) ?? []).length;
+    depth -= (lines[n].match(closeRe) ?? []).length;
+    if (depth <= 0) return n + 1;
+  }
+  return null; // never closed: the caller falls back rather than swallowing the file
+}
+
+/** Where a non-container raw HTML block ends: at the next blank line. */
+function blankEnd(lines: string[], start: number): number {
+  let n = start;
+  while (n < lines.length && !isBlank(lines[n])) n++;
+  return n;
+}
 const LIST_ITEM = /^(\s*)([-+*]|\d+[.)])\s+/;
 const HTML_OPEN = /^\s*<(\/?[a-zA-Z][\w-]*|!--)/;
 
@@ -130,6 +199,28 @@ export function splitBlocks(src: string): Block[] {
   const lines = src.replace(/\r\n?/g, "\n").replace(/\t/g, "    ").split("\n");
   const out: Block[] = [];
   let i = 0;
+
+  // The last line each closing token appears on, found once and reused.
+  // An opener with none ahead of it can only fall back, so it is refused
+  // without the scan to end-of-file that discovering it would cost —
+  // otherwise a document of unterminated tags is quadratic. Only absence
+  // generalises this way: a depth mismatch like <div><div></div> fails
+  // from the first opener and succeeds from the second.
+  // ponytail: so one stray </div> anywhere puts every opener back on a
+  // full scan (156ms at 2400 of them). A running depth is the upgrade.
+  const lastCloser = new Map<string, number>();
+  const closerAhead = (token: string, from: number): boolean => {
+    let last = lastCloser.get(token);
+    if (last === undefined) {
+      // Case-insensitive because tagOf lowercases and containerEnd's own
+      // scan is /i. A token is "-->" or "</" + a tagOf name, so it holds
+      // no character a regex would read as syntax.
+      const re = new RegExp(token, "i");
+      for (last = lines.length - 1; last >= 0 && !re.test(lines[last]); last--);
+      lastCloser.set(token, last);
+    }
+    return last >= from;
+  };
 
   const push = (kind: BlockKind, start: number, end: number) => {
     const body = lines.slice(start, end).join("\n");
@@ -217,7 +308,10 @@ export function splitBlocks(src: string): Block[] {
 
     // raw HTML block
     if (HTML_OPEN.test(line) && !/^\s*<https?:/i.test(line)) {
-      while (i < lines.length && !isBlank(lines[i])) i++;
+      const tag = tagOf(line);
+      const closer = COMMENT.test(line) ? "-->" : tag && `</${tag}`;
+      const end = closer && !closerAhead(closer, i) ? null : containerEnd(lines, i);
+      i = end ?? blankEnd(lines, i);
       push("html", start, i);
       continue;
     }

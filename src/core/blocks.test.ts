@@ -92,3 +92,97 @@ describe("helpers", () => {
     expect(normalize("  a\n\t b  ")).toBe("a b");
   });
 });
+
+describe("raw HTML containers", () => {
+  // Ending an HTML block at the first blank line splits <details> from its
+  // contents. Rendered as one row per block, the element then closes at the
+  // row boundary and the accordion never toggles.
+  const DETAILS = [
+    "<details>",
+    "<summary>Version history</summary>",
+    "",
+    "| Version | Date |",
+    "| --- | --- |",
+    "| 1.0 | today |",
+    "",
+    "</details>",
+  ].join("\n");
+
+  test("a container survives the blank lines inside it", () => {
+    const blocks = splitBlocks(DETAILS);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].kind).toBe("html");
+    expect(blocks[0].src).toContain("</details>");
+  });
+
+  test("nesting the same tag does not close early", () => {
+    const src = ["<div>", "<div>", "", "inner", "", "</div>", "", "tail", "</div>"].join("\n");
+    expect(splitBlocks(src)).toHaveLength(1);
+  });
+
+  test("an unclosed container falls back to the blank-line rule", () => {
+    const src = ["<div>", "dangling", "", "# A separate heading"].join("\n");
+    expect(kinds(src)).toEqual(["html", "heading"]);
+  });
+
+  test("a void element is not treated as a container", () => {
+    expect(kinds(["<hr/>", "", "after"].join("\n"))).toEqual(["html", "para"]);
+  });
+
+  // hr and img are void, so they never reach the self-closing check; a
+  // non-void tag written self-closing is the only case it decides.
+  test("a self-closing non-void tag is not treated as a container", () => {
+    // A stray </span> later would balance it if the tag were treated as an
+    // opener, swallowing the paragraph between them into one block.
+    const src = ["<span />", "", "after", "", "</span>"].join("\n");
+    expect(kinds(src)).toEqual(["html", "para", "html"]);
+  });
+
+  // A comment split at its first blank line never gets its "-->" back:
+  // the closer is escaped as text and the browser swallows every element
+  // after it, so commenting out one section blanks the rest of the page.
+  test("a multi-line comment is one block, up to its closer", () => {
+    const src = ["# Kept", "", "<!--", "## Old", "", "text", "-->", "", "# After"].join("\n");
+    const blocks = splitBlocks(src);
+    expect(blocks.map((b) => b.kind)).toEqual(["heading", "html", "heading"]);
+    expect(blocks[1].src).toBe("<!--\n## Old\n\ntext\n-->");
+  });
+
+  // Openers whose closer is nowhere ahead are refused without a scan
+  // each. The split must be the one the scans would have produced.
+  test("repeated openers with no closer each end at their own blank line", () => {
+    for (const [open, kind] of [
+      ["<!-- a", "html"],
+      ["<div>", "html"],
+    ] as const) {
+      const src = [open, "", open, "", open, "", "tail"].join("\n");
+      expect(kinds(src)).toEqual([kind, kind, kind, "para"]);
+    }
+  });
+
+  // Only absence of a closer generalises to later openers. Depth failure
+  // does not: this fails from the first <div> and succeeds from the
+  // second, so a latch keyed on "the scan failed" would break it.
+  test("a container still closes after one of the same tag did not", () => {
+    const src = ["<div>", "", "<div>", "x", "</div>", "", "tail"].join("\n");
+    expect(splitBlocks(src).map((b) => b.src)).toEqual(["<div>", "<div>\nx\n</div>", "tail"]);
+  });
+
+  // Tags may be written in any case. The closer scan lowercases because
+  // tagOf does; when it did not, an uppercase container split into three
+  // blocks and its body was reflowed as Markdown.
+  test("a container written in capitals is still one block", () => {
+    for (const tag of ["PRE", "DETAILS", "Div"]) {
+      const src = [`<${tag}>`, "body", "", "more", `</${tag}>`].join("\n");
+      expect(kinds(src)).toEqual(["html"]);
+    }
+  });
+
+  // A comment runs to the first "-->" ahead of it wherever that is, as a
+  // browser tokenizes it — so an earlier opener cannot still be open
+  // while a later one closes, which is what makes skipping the scan safe.
+  test("a comment runs to the first closer ahead of it, wherever it is", () => {
+    const src = ["<!-- open", "", "<!-- nested", "-->", "", "tail"].join("\n");
+    expect(splitBlocks(src).map((b) => b.src)).toEqual(["<!-- open\n\n<!-- nested\n-->", "tail"]);
+  });
+});

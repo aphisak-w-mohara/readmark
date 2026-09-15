@@ -5,16 +5,18 @@
  * work to the pure core (prefs validation/persistence, markdown rendering,
  * highlighting, diffing). The core never imports Svelte.
  */
-import DOMPurify from "dompurify";
 import { loadPrefs, savePrefs, type Prefs, type StorageLike } from "./core/prefs";
-import { toHtml, type Rendered } from "./core/markdown";
+import type { Rendered } from "./core/markdown";
 import { toDiffHtml, type DiffDoc } from "./core/diff";
 import { highlight } from "./core/highlight";
 import { SourceError, type FetchLike } from "./core/source";
 import {
   currentLogin,
   fetchPr,
+  fetchViewer,
   fetchSides,
+  postComment,
+  submitReview,
   lastReviewedCommit,
   listCommits,
   listMarkdownFiles,
@@ -28,7 +30,10 @@ import {
   type PrInfo,
 } from "./core/pr";
 import { clearToken, loadToken, saveToken, type TokenStore, type TokenStores } from "./core/token";
+import { parsePatch } from "./core/patch";
+import { putComment, type Anchor, type DraftComment, type ReviewEvent } from "./core/review";
 import { makeGhFetch, probeSession, SIGN_IN_ENABLED, type Auth } from "./lib/gh";
+import { clean, render } from "./lib/render";
 
 const memory: StorageLike = (() => {
   const m = new Map<string, string>();
@@ -50,9 +55,6 @@ const tokenStores: TokenStores = {
   local: typeof localStorage !== "undefined" ? localStorage : memoryToken(),
 };
 
-/** Sanitize once, in one place: the parser deliberately passes raw HTML through. */
-const clean = (html: string) => DOMPurify.sanitize(html, { ADD_ATTR: ["target", "loading"] });
-
 export type Layout = "unified" | "split";
 export type Scope = "all" | "changed";
 
@@ -65,6 +67,8 @@ class ReadmarkStore {
   // PR review
   mode = $state<"doc" | "diff">("doc");
   pr = $state<PrInfo | null>(null);
+  /** The credential's own login, when GitHub would tell us. */
+  viewer = $state<string | null>(null);
   files = $state<PrFiles | null>(null);
   activeFile = $state<PrFile | null>(null);
   diff = $state<DiffDoc | null>(null);
@@ -73,6 +77,13 @@ class ReadmarkStore {
   range = $state<CommitRange | null>(null);
   /** The commit this user last reviewed at, if they have. */
   lastReviewSha = $state<string | null>(null);
+
+  // A review in progress. It belongs to the pull request, not the file:
+  // switching files or commit ranges mid-review is ordinary.
+  draft = $state<DraftComment[]>([]);
+  submitting = $state(false);
+  reviewError = $state<string | null>(null);
+  submitted = $state<string | null>(null);
   layout = $state<Layout>("unified");
   scope = $state<Scope>("all");
   busy = $state(false);
@@ -128,8 +139,7 @@ class ReadmarkStore {
 
   /** Render Markdown, then sanitize the HTML. */
   load(markdown: string) {
-    const rendered = toHtml(markdown, { highlight });
-    this.doc = { ...rendered, html: clean(rendered.html) };
+    this.doc = render(markdown);
     this.mode = "doc";
     this.pr = null;
     this.files = null;
@@ -138,6 +148,13 @@ class ReadmarkStore {
     this.commits = [];
     this.range = null;
     this.lastReviewSha = null;
+    this.clearReview();
+  }
+
+  private clearReview() {
+    this.draft = [];
+    this.reviewError = null;
+    this.submitted = null;
   }
 
   /**
@@ -153,16 +170,22 @@ class ReadmarkStore {
     const gh = makeGhFetch(auth);
     this.busy = true;
     try {
-      const [pr, files, commits] = await Promise.all([
+      const [pr, files, commits, viewer] = await Promise.all([
         fetchPr(ref, gh),
         listMarkdownFiles(ref, gh),
         listCommits(ref, gh),
+        fetchViewer(gh),
       ]);
       if (!files.markdown.length)
         throw new SourceError(
           "http",
           `This PR changes no Markdown files${files.otherCount ? ` (${files.otherCount} other files changed)` : ""}.`,
         );
+      // A review belongs to the pull request it was written against, so
+      // opening a different one must not carry a draft across — it would
+      // submit against the wrong PR.
+      this.clearReview();
+      this.viewer = viewer;
       this.pr = pr;
       this.files = files;
       this.commits = commits;
@@ -197,6 +220,26 @@ class ReadmarkStore {
     } catch {
       this.lastReviewSha = null;
     }
+  }
+
+  /**
+   * Whether comments can be written at all. A range's line numbers belong
+   * to the range's head rather than the pull request's, so anchors taken
+   * from one can name a line GitHub's diff does not have. One rule, read
+   * by the anchors, the submit commit, and the review bar alike.
+   */
+  /**
+   * A verdict on your own pull request is refused by GitHub — "Can not
+   * request changes on your own pull request", as a bare 422. Knowing it
+   * here keeps the button from offering what the API will not do. Unknown
+   * either way means offer it: the error now says what GitHub said.
+   */
+  get ownPr(): boolean {
+    return Boolean(this.viewer && this.pr?.author && this.viewer === this.pr.author);
+  }
+
+  get commenting(): boolean {
+    return this.range === null;
   }
 
   /** The two commits currently being diffed between. */
@@ -248,7 +291,11 @@ class ReadmarkStore {
         file,
         makeGhFetch(auth),
       );
-      const diff = toDiffHtml(before, after, { highlight });
+      // Anchors come from the patch, and only when commenting applies.
+      const diff = toDiffHtml(before, after, {
+        highlight,
+        commentable: this.commenting ? parsePatch(file.patch) : undefined,
+      });
       this.diff = {
         ...diff,
         rows: diff.rows.map((r) => ({
@@ -267,6 +314,61 @@ class ReadmarkStore {
       };
     } finally {
       this.busy = false;
+    }
+  }
+
+  /** The commit a comment written now should attach to. */
+  private get headSha(): string | null {
+    // Never a range's head: a draft written on the whole-PR view survives
+    // a later range pick, and posting it against a mid-PR commit is the
+    // very thing anchoring against the PR's diff exists to avoid.
+    return this.commenting ? (this.pr?.headSha ?? null) : null;
+  }
+
+  /** Write, edit, or (with an empty body) drop a comment on one anchor. */
+  setComment(anchor: Anchor, body: string) {
+    const path = this.activeFile?.filename;
+    if (!path) return;
+    this.draft = putComment(this.draft, path, anchor, body);
+    this.reviewError = null;
+  }
+
+  /** Send the whole review. Keeps the draft if GitHub refuses it. */
+  async submitReview(event: ReviewEvent, summary: string) {
+    const pr = this.pr;
+    const auth = this.auth;
+    const commit = this.headSha;
+    if (!pr || !auth || !commit) return;
+    this.submitting = true;
+    this.reviewError = null;
+    try {
+      const out = await submitReview(pr, commit, event, summary, this.draft, makeGhFetch(auth));
+      this.draft = [];
+      this.submitted = out.html_url;
+    } catch (e) {
+      this.reviewError = e instanceof Error ? e.message : String(e);
+    } finally {
+      this.submitting = false;
+    }
+  }
+
+  /** Send one comment on its own, without opening a review. */
+  async postOne(anchor: Anchor, body: string) {
+    const pr = this.pr;
+    const auth = this.auth;
+    const commit = this.headSha;
+    const path = this.activeFile?.filename;
+    if (!pr || !auth || !commit || !path) return;
+    this.submitting = true;
+    this.reviewError = null;
+    try {
+      await postComment(pr, commit, path, anchor, body, makeGhFetch(auth));
+    } catch (e) {
+      // The comment is not sent, so keep it as a draft rather than lose it.
+      this.setComment(anchor, body);
+      this.reviewError = e instanceof Error ? e.message : String(e);
+    } finally {
+      this.submitting = false;
     }
   }
 
