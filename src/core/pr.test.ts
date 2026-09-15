@@ -9,6 +9,7 @@ import {
   resolveRange,
   currentLogin,
   lastReviewedCommit,
+  commitWhen,
   fetchSides,
   submitReview,
   postComment,
@@ -539,5 +540,40 @@ describe("writing a review", () => {
       throw new Error("offline");
     };
     expect(submitReview(ref, "h", "APPROVE", "", draft, fn)).rejects.toThrow(/draft is intact/);
+  });
+});
+
+describe("commitWhen", () => {
+  const now = Date.parse("2026-09-15T14:40:00Z");
+  const at = (secondsAgo: number) =>
+    commitWhen(new Date(now - secondsAgo * 1000).toISOString(), now);
+
+  test("counts minutes, then hours, up to a full day", () => {
+    expect(at(60)).toBe("1 minute ago");
+    expect(at(59 * 60 + 59)).toBe("59 minutes ago");
+    expect(at(3600)).toBe("1 hour ago");
+    expect(at(22 * 3600)).toBe("22 hours ago");
+    expect(at(86399)).toBe("23 hours ago");
+  });
+
+  test("falls back to the exact moment at a day old", () => {
+    // Not "1 day ago": past a day the date and time tell commits apart.
+    expect(at(86400)).toMatch(/^on \w{3} \d{1,2} \d{2}:\d{2}$/);
+    expect(at(6 * 86400)).toMatch(/^on \w{3} \d{1,2} \d{2}:\d{2}$/);
+  });
+
+  test("adds the year only once the commit is over a year old", () => {
+    // Shape, not a wall clock: the day and hour shown depend on the reader's
+    // time zone, but whether a year appears at all does not.
+    // Exactly a year old is not yet older than a year; a second more is.
+    expect(at(365 * 86400)).toMatch(/^on \w{3} \d{1,2} \d{2}:\d{2}$/);
+    expect(at(365 * 86400 + 1)).toMatch(/^on \w{3} \d{1,2}, 2025 \d{2}:\d{2}$/);
+    expect(at(3 * 365 * 86400)).toMatch(/^on \w{3} \d{1,2}, 2023 \d{2}:\d{2}$/);
+  });
+
+  test("under a minute stays in seconds, and a bad date is blank", () => {
+    expect(at(30)).toBe("30 seconds ago");
+    expect(commitWhen("")).toBe("");
+    expect(commitWhen("not a date")).toBe("");
   });
 });

@@ -2,7 +2,7 @@
  * Pull requests: resolving a URL, listing the Markdown files it touches, and
  * fetching both sides of one file.
  *
- * `resolvePR` is pure URL logic. Everything else takes an injected fetch —
+ * `resolvePR` and `commitWhen` are pure. Everything else takes an injected fetch —
  * the same seam `fetchMarkdown` uses — so the network is faked in tests and
  * so the caller decides whether requests go through the session proxy or
  * straight to api.github.com with a token.
@@ -232,6 +232,53 @@ export async function listCommits(ref: PrRef, fetchFn: FetchLike): Promise<PrCom
     if (batch.length < 100) break;
   }
   return out;
+}
+
+// Built once and shared: the cost of a date is in building the formatter, and
+// these run per commit row, up to the 250 listCommits returns.
+//
+// Pinned to en-US rather than the ambient locale because the sentence around
+// the date is hardcoded English ("committed ..."). Taking the machine locale
+// put "committed 22 ชั่วโมงที่ผ่านมา" on a Thai desktop — half-translated is
+// worse than untranslated. Give this a locale when the UI gets one.
+const LOCALE = "en-US";
+const AGO = new Intl.RelativeTimeFormat(LOCALE, { numeric: "always" });
+const DAY = new Intl.DateTimeFormat(LOCALE, { month: "short", day: "numeric" });
+const DAY_YEAR = new Intl.DateTimeFormat(LOCALE, {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+});
+const TIME = new Intl.DateTimeFormat(LOCALE, {
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+
+/** The same calendar date a year earlier, so leap years count honestly. */
+function aYearBefore(now: number): number {
+  const d = new Date(now);
+  d.setFullYear(d.getFullYear() - 1);
+  return d.getTime();
+}
+
+/**
+ * How a commit's age reads in the picker: "42 minutes ago" or "3 hours ago"
+ * within the last day, and the exact moment — "on Sep 14 14:40" — beyond it,
+ * where "6 days ago" stops being precise enough to tell commits apart. Past a
+ * year the year itself joins the date, which until then only adds noise.
+ */
+export function commitWhen(iso: string, now: number = Date.now()): string {
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return "";
+  const s = (now - t) / 1000;
+  if (s < 0 || s >= 86400) {
+    const d = new Date(t);
+    return `on ${(t < aYearBefore(now) ? DAY_YEAR : DAY).format(d)} ${TIME.format(d)}`;
+  }
+  if (s >= 3600) return AGO.format(-Math.floor(s / 3600), "hour");
+  if (s >= 60) return AGO.format(-Math.floor(s / 60), "minute");
+  return AGO.format(-Math.floor(s), "second");
 }
 
 /**

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { CommitRange, PrCommit } from "../core/pr";
+  import { commitWhen, type CommitRange, type PrCommit } from "../core/pr";
 
   interface Props {
     open: boolean;
@@ -71,8 +71,6 @@
     onClose();
   }
 
-  const day = (iso: string) =>
-    iso ? new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "";
 </script>
 
 <div class="panel" id="commitPanel" class:show={open} role="dialog" aria-label="Select commits to view">
@@ -125,7 +123,7 @@
         <span class="cm-box" class:on={selected(i)} aria-hidden="true"></span>
         <span class="cm-body">
           <span class="cm-msg">{c.subject}</span>
-          <span class="cm-meta">{c.author} committed on {day(c.date)}</span>
+          <span class="cm-meta">{c.author} committed {commitWhen(c.date)}</span>
         </span>
         <code class="cm-sha">{c.sha.slice(0, 7)}</code>
       </button>
