@@ -1,6 +1,6 @@
 <script lang="ts">
   import { store } from "../state.svelte";
-  import { THEMES, FONTS, SPACING, WIDTHS, SIZE_MIN, SIZE_MAX } from "../lib/theme";
+  import { THEMES, FONTS, SPACING, WIDTHS, SIZE_MIN, SIZE_MAX } from "../core/theme";
 
   interface Props {
     open: boolean;
@@ -46,8 +46,8 @@
   <div class="aa-sec">
     <div class="aa-label">Line spacing</div>
     <div class="seg">
-      {#each SPACING as s (s.v)}
-        <button class:sel={p.spacing === s.v} onclick={() => store.patchPrefs({ spacing: s.v })}>{s.label}</button>
+      {#each SPACING as s (s.id)}
+        <button class:sel={p.spacing === s.id} onclick={() => store.patchPrefs({ spacing: s.id })}>{s.label}</button>
       {/each}
     </div>
   </div>
@@ -55,8 +55,8 @@
   <div class="aa-sec">
     <div class="aa-label">Page width</div>
     <div class="seg">
-      {#each WIDTHS as w (w.v)}
-        <button class:sel={p.width === w.v} onclick={() => store.patchPrefs({ width: w.v })}>{w.label}</button>
+      {#each WIDTHS as w (w.id)}
+        <button class:sel={p.width === w.id} onclick={() => store.patchPrefs({ width: w.id })}>{w.label}</button>
       {/each}
     </div>
   </div>

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { store } from "./state.svelte";
-  import { fontCss } from "./lib/theme";
+  import { fontCss } from "./core/theme";
   import { progressPct, activeHeadingId, focusTargetIndex, countWords, readingTime } from "./core/reading";
   import type { Heading } from "./core/markdown";
   import SAMPLE from "./sample.md?raw";
