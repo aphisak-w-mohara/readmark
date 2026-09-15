@@ -57,9 +57,14 @@
   // Render any ```mermaid blocks into SVG. Lazy-imports mermaid so the library
   // only loads when a document actually contains a diagram.
   let mermaidSeq = 0;
-  async function renderMermaid(dark: boolean) {
+  // `all` re-draws diagrams that already carry an SVG, which only a theme flip
+  // needs; a sweep after new rows appear must leave them alone, or writing the
+  // SVG back would trip the observer that called it.
+  async function renderMermaid(dark: boolean, all = false) {
     if (!articleEl) return;
-    const blocks = [...articleEl.querySelectorAll<HTMLElement>(".mermaid")];
+    const blocks = [...articleEl.querySelectorAll<HTMLElement>(".mermaid")].filter(
+      (el) => all || !el.querySelector("svg"),
+    );
     if (!blocks.length) return;
     const mermaid = (await import("mermaid")).default;
     // A concrete stack, not "inherit": mermaid sizes every node box by
@@ -89,12 +94,35 @@
     }
   }
 
-  // (re)render diagrams whenever the document changes or the light/dark theme flips
+  // Diagrams are rendered by the view, but the raw placeholders are put in the
+  // DOM by several different things: the reading document, and every diff
+  // control that rebuilds rows — layout, scope, and DiffView's own folds, whose
+  // state does not reach this component. Tracking that set of triggers by hand
+  // is what left a split diff showing Mermaid source, so watch the article
+  // instead: a placeholder appearing is the one signal none of them can dodge.
+  // Runs are chained because a sweep can land mid-render; the extra pass then
+  // finds nothing and costs one querySelectorAll.
+  let mermaidRun: Promise<void> = Promise.resolve();
   $effect(() => {
-    // oxlint-disable-next-line no-unused-expressions -- track doc + theme for diagram rendering
-    store.doc.html;
+    const el = articleEl;
+    if (!el) return;
     const dark = isDark;
-    queueMicrotask(() => renderMermaid(dark));
+    const sweep = (all = false) => {
+      mermaidRun = mermaidRun.then(() => renderMermaid(dark, all));
+    };
+    let queued = false;
+    const obs = new MutationObserver(() => {
+      if (queued) return;
+      queued = true;
+      queueMicrotask(() => {
+        queued = false;
+        sweep();
+      });
+    });
+    obs.observe(el, { childList: true, subtree: true });
+    // The theme is baked into each diagram, so a flip redraws every one.
+    sweep(true);
+    return () => obs.disconnect();
   });
 
   // delegate code-block "Copy" clicks off the article (survives {@html} swaps)
