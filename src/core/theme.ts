@@ -1,4 +1,7 @@
-/** Reading-experience option tables shared by the Aa panel and the state layer. */
+/**
+ * Reading-experience option tables: the vocabulary every reading pref is drawn from.
+ * Lives beside prefs.ts because that is what validates a stored pref against them.
+ */
 
 export interface FontOption {
   id: string;
@@ -43,11 +46,12 @@ export const FONTS: FontOption[] = [
 
 export const fontCss = (id: string): string => (FONTS.find((f) => f.id === id) ?? FONTS[0]).css;
 
-export interface ThemeOption {
+/** An option a pref can hold: the stored value, and what the panel calls it. */
+export interface Option {
   id: string;
   label: string;
 }
-export const THEMES: ThemeOption[] = [
+export const THEMES: Option[] = [
   { id: "original", label: "Original" },
   { id: "quiet", label: "Quiet" },
   { id: "sepia", label: "Sepia" },
@@ -55,16 +59,16 @@ export const THEMES: ThemeOption[] = [
   { id: "black", label: "Black" },
 ];
 
-export const SPACING = [
-  { v: "1.42", label: "Tight" },
-  { v: "1.66", label: "Normal" },
-  { v: "1.95", label: "Airy" },
+export const SPACING: Option[] = [
+  { id: "1.42", label: "Tight" },
+  { id: "1.66", label: "Normal" },
+  { id: "1.95", label: "Airy" },
 ];
 
-export const WIDTHS = [
-  { v: "56ch", label: "Narrow" },
-  { v: "66ch", label: "Medium" },
-  { v: "82ch", label: "Wide" },
+export const WIDTHS: Option[] = [
+  { id: "56ch", label: "Narrow" },
+  { id: "66ch", label: "Medium" },
+  { id: "104ch", label: "Ultra" },
 ];
 
 export const SIZE_MIN = 14;
